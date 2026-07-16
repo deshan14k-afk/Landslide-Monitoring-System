@@ -1,0 +1,20 @@
+{
+  "rules": {
+    "readings": {
+      ".read": true,
+      ".write": true,
+      "$reading_id": {
+        ".validate": "newData.hasChildren(['accel_x', 'accel_y', 'accel_z', 'soil_moisture'])"
+      }
+    },
+    "weather": {
+      ".read": true,
+      ".write": true,
+      ".validate": "newData.hasChildren(['temperature', 'humidity', 'rain', 'wind_speed', 'wind_direction'])"
+    },
+    "$other": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}

@@ -1,0 +1,2266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Real-time landslide monitoring dashboard with capacitive soil moisture sensor, ADXL345 accelerometer, GPS tracking, and live weather data for environmental disaster management." />
+<title>Landslide Monitoring Dashboard — LandSafe IoT</title>
+
+<!-- CDN Dependencies -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script>
+  if (typeof XLSX === 'undefined') {
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\/script>');
+  }
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<!-- Leaflet Map -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+* { font-family: 'Inter', sans-serif; box-sizing: border-box; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+body { background: #F8FAFC; color: #1E293B; margin: 0; }
+
+/* ── Sidebar ── */
+.sidebar-nav-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border-radius: 12px; cursor: pointer;
+  color: #64748B; font-size: 13.5px; font-weight: 500;
+  transition: all 0.2s ease; position: relative;
+}
+.sidebar-nav-item:hover { background: #F1F5F9; color: #1E293B; }
+.sidebar-nav-item.active {
+  background: linear-gradient(135deg, #EFF6FF, #F0FDF4);
+  color: #3B82F6; font-weight: 600;
+}
+.sidebar-nav-item.active::before {
+  content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 20px; border-radius: 0 3px 3px 0; background: #3B82F6;
+}
+.sidebar-nav-item.active iconify-icon { color: #3B82F6; }
+
+/* ── Cards ── */
+.stat-card {
+  background: #fff; border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 4px 16px rgba(0,0,0,0.03);
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+  overflow: hidden; border: 1px solid rgba(0,0,0,0.04);
+}
+.stat-card:hover { box-shadow: 0 8px 30px rgba(0,0,0,0.10); transform: translateY(-2px); }
+
+.chart-card {
+  background: #fff; border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 4px 16px rgba(0,0,0,0.03);
+  border: 1px solid rgba(0,0,0,0.04);
+}
+
+/* ── Dots ── */
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+
+/* ── Risk Badge ── */
+.risk-badge {
+  padding: 8px 28px; border-radius: 999px;
+  font-weight: 700; font-size: 16px; letter-spacing: 0.5px;
+  transition: all 0.5s ease;
+}
+
+/* ── Buttons ── */
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 18px; border-radius: 10px; font-size: 13px;
+  font-weight: 600; cursor: pointer; border: none; transition: all 0.2s;
+}
+.btn-green { background: #22C55E; color: #fff; }
+.btn-green:hover { background: #16A34A; box-shadow: 0 4px 12px rgba(34,197,94,0.3); transform: translateY(-1px); }
+.btn-red-outline { background: transparent; color: #EF4444; border: 1.5px solid #EF4444; }
+.btn-red-outline:hover { background: #FEF2F2; box-shadow: 0 4px 12px rgba(239,68,68,0.2); transform: translateY(-1px); }
+
+/* ── Table ── */
+.table-row { transition: background 0.15s ease; }
+.table-row:hover { background: #F8FAFC; }
+
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(15,23,42,0.5);
+  backdrop-filter: blur(6px); z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.25s ease; pointer-events: none;
+}
+.modal-overlay.visible { opacity: 1; pointer-events: all; }
+.modal-box {
+  background: #fff; border-radius: 20px; padding: 32px;
+  max-width: 420px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+  transform: scale(0.92) translateY(20px);
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.modal-overlay.visible .modal-box { transform: scale(1) translateY(0); }
+
+/* ── Pagination ── */
+.pagination-btn {
+  width: 30px; height: 30px; border-radius: 8px; border: 1px solid #E2E8F0;
+  display: flex; align-items: center; justify-content: center; background: #fff;
+  font-size: 12px; cursor: pointer; transition: all 0.15s; font-weight: 500;
+}
+.pagination-btn:hover { background: #F1F5F9; }
+.pagination-btn.active { background: #3B82F6; color: #fff; border-color: #3B82F6; }
+
+/* ── Search ── */
+.search-input {
+  padding: 8px 14px 8px 36px; border: 1px solid #E2E8F0; border-radius: 10px;
+  font-size: 13px; outline: none; transition: all 0.2s; background: #F8FAFC; width: 220px;
+}
+.search-input:focus { border-color: #3B82F6; background: #fff; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+
+/* ── Tags ── */
+.tag { padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; transition: all 0.3s ease; }
+.tag-safe    { background: #DCFCE7; color: #16A34A; }
+.tag-warning { background: #FEF3C7; color: #D97706; }
+.tag-danger  { background: #FEE2E2; color: #DC2626; }
+
+/* ── Tilt Bars ── */
+.tilt-axis-bar { height: 6px; border-radius: 3px; background: #E2E8F0; overflow: hidden; }
+.tilt-axis-fill { height: 100%; border-radius: 3px; transition: width 1s ease; }
+
+/* ── Layout Elements ── */
+.topbar  { background: #fff; border-bottom: 1px solid #F1F5F9; }
+.sidebar { background: #fff; border-right:  1px solid #F1F5F9; }
+
+/* ── Weather Widget ── */
+.weather-widget {
+  background: linear-gradient(135deg, #0284C7, #3B82F6);
+  border-radius: 14px; color: #fff; overflow: hidden; position: relative;
+}
+.weather-widget::before {
+  content: ''; position: absolute; top: -30px; right: -30px;
+  width: 90px; height: 90px; border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+}
+
+/* ── GPS Card ── */
+.gps-card {
+  background: linear-gradient(135deg, #1E293B, #334155);
+  border-radius: 16px; color: #fff; overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+.gps-info-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 0; font-size: 12px;
+}
+.gps-info-row .gps-label { color: #94A3B8; font-weight: 500; }
+.gps-info-row .gps-value { color: #fff; font-weight: 600; font-family: 'Inter', monospace; }
+
+/* ── Soil Gauge ── */
+.soil-gauge-bg { background: #F1F5F9; border-radius: 10px; padding: 12px; }
+.soil-gauge-bar { height: 10px; border-radius: 5px; background: #E2E8F0; overflow: hidden; }
+.soil-gauge-fill { height: 100%; border-radius: 5px; transition: width 1s ease; }
+
+/* ── Connection badge ── */
+.connection-badge {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 8px; font-size: 11px; font-weight: 600;
+}
+.conn-online { background: #DCFCE7; color: #16A34A; }
+.conn-offline { background: #FEE2E2; color: #DC2626; }
+
+/* ── Animations ── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+  50% { opacity: 0.6; box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+}
+.pulse { animation: pulse-dot 2s infinite; }
+
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-in { animation: countUp 0.5s ease forwards; }
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Toast ── */
+.toast-notification {
+  position: fixed; bottom: 28px; right: 28px; background: #1E293B; color: #fff;
+  padding: 14px 22px; border-radius: 14px; font-size: 13px; font-weight: 500;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2); z-index: 99999;
+  display: flex; align-items: center; gap: 10px;
+  transform: translateY(100px); opacity: 0;
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+}
+.toast-notification.show { transform: translateY(0); opacity: 1; }
+
+/* ── Map ── */
+#gpsMap { border-radius: 12px; z-index: 1; }
+.leaflet-control-attribution { font-size: 9px !important; }
+
+/* ── Page sections ── */
+.page-section { display: none; }
+.page-section.active { display: block; }
+
+/* ── Live Monitor ── */
+.live-sensor-card {
+  background: #fff; border-radius: 16px; padding: 20px;
+  border: 1px solid rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.live-gauge-ring { transition: stroke-dashoffset 1s ease; }
+
+/* ── History Table ── */
+.history-filter-btn {
+  padding: 6px 14px; border-radius: 8px; border: 1px solid #E2E8F0;
+  font-size: 12px; font-weight: 600; cursor: pointer; background: #fff;
+  color: #64748B; transition: all 0.2s;
+}
+.history-filter-btn:hover, .history-filter-btn.active {
+  background: #3B82F6; color: #fff; border-color: #3B82F6;
+}
+
+/* ── Settings ── */
+.settings-section {
+  background: #fff; border-radius: 16px; padding: 24px;
+  border: 1px solid rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  margin-bottom: 16px;
+}
+.settings-toggle {
+  width: 40px; height: 22px; border-radius: 11px; background: #E2E8F0;
+  cursor: pointer; position: relative; transition: background 0.2s;
+}
+.settings-toggle.on { background: #22C55E; }
+.settings-toggle::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.settings-toggle.on::after { transform: translateX(18px); }
+.settings-input {
+  padding: 9px 14px; border: 1px solid #E2E8F0; border-radius: 10px;
+  font-size: 13px; outline: none; width: 100%; transition: all 0.2s;
+}
+.settings-input:focus { border-color: #3B82F6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+
+/* ── Responsive ── */
+@media (max-width: 1280px) {
+  .grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
+  .grid-2 { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 768px) {
+  .sidebar-hide { display: none !important; }
+  .grid-4, .grid-3, .grid-5 { grid-template-columns: 1fr !important; }
+  .topbar-responsive { flex-direction: column; align-items: flex-start !important; gap: 12px !important; }
+  .topbar-actions { flex-wrap: wrap; }
+}
+</style>
+</head>
+
+<body class="flex h-screen overflow-hidden">
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- ── SIDEBAR ──────────────────────────────────── -->
+<!-- ══════════════════════════════════════════════ -->
+<aside class="sidebar sidebar-hide flex-shrink-0 flex flex-col h-full" style="width:228px">
+  <div class="px-5 py-5 flex items-center gap-3 border-b border-slate-100">
+    <div class="w-10 h-10 flex items-center justify-center" style="background:linear-gradient(135deg,#22C55E,#0284C7);border-radius:13px;box-shadow:0 4px 12px rgba(34,197,94,0.25)">
+      <iconify-icon icon="material-symbols:landslide" style="color:#fff;font-size:22px"></iconify-icon>
+    </div>
+    <div>
+      <div style="font-size:14px;font-weight:800;color:#1E293B;letter-spacing:-0.01em">LandSafe</div>
+      <div style="font-size:10.5px;color:#94A3B8;font-weight:500">IoT Monitor v2.0</div>
+    </div>
+  </div>
+
+  <nav class="flex-1 px-3 py-4 flex flex-col gap-1">
+    <div class="sidebar-nav-item active" id="nav-dashboard" onclick="setPage('dashboard',this)">
+      <iconify-icon icon="material-symbols:dashboard-rounded" style="font-size:18px"></iconify-icon> Dashboard
+    </div>
+    <div class="sidebar-nav-item" id="nav-live" onclick="setPage('live',this)">
+      <iconify-icon icon="material-symbols:sensors" style="font-size:18px"></iconify-icon> Live Monitoring
+    </div>
+    <div class="sidebar-nav-item" id="nav-history" onclick="setPage('history',this)">
+      <iconify-icon icon="material-symbols:history-rounded" style="font-size:18px"></iconify-icon> Data History
+    </div>
+    <div class="sidebar-nav-item" id="nav-settings" onclick="setPage('settings',this)">
+      <iconify-icon icon="material-symbols:settings-rounded" style="font-size:18px"></iconify-icon> Settings
+    </div>
+  </nav>
+
+  <!-- System Status Panel -->
+  <div class="mx-3 mb-3 p-3" style="background:#F8FAFC;border:1px solid #F1F5F9;border-radius:14px">
+    <div style="font-weight:600;font-size:10px;color:#94A3B8;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:10px">System Status</div>
+    <div class="flex flex-col gap-2">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2"><span class="status-dot pulse" id="espDot" style="background:#22C55E"></span><span style="font-size:11.5px;color:#475569">ESP32</span></div>
+        <span style="font-size:11px;font-weight:600" id="espStatusText" class="text-green-500">Connecting...</span>
+      </div>
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2"><span class="status-dot" id="lastDataDot" style="background:#94A3B8"></span><span style="font-size:11.5px;color:#475569">Last Data</span></div>
+        <span style="font-size:11px;color:#64748B;font-weight:500" id="lastDataTime">Waiting...</span>
+      </div>
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2"><span class="status-dot" id="gpsDot" style="background:#94A3B8"></span><span style="font-size:11.5px;color:#475569">GPS Fix</span></div>
+        <span style="font-size:11px;font-weight:600" id="gpsFixSidebar" style="color:#94A3B8">No Fix</span>
+      </div>
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2"><span class="status-dot" id="dbDot" style="background:#22C55E"></span><span style="font-size:11.5px;color:#475569">Firebase</span></div>
+        <span style="font-size:11px;font-weight:600" id="dbStatusText" class="text-green-500">Connected</span>
+      </div>
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2"><span class="status-dot" id="weatherDot" style="background:#94A3B8"></span><span style="font-size:11.5px;color:#475569">Weather</span></div>
+        <span style="font-size:11px;font-weight:600" id="weatherStatusText" style="color:#94A3B8">Pending</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="px-4 pb-4">
+    <div style="font-size:9.5px;color:#CBD5E1;text-align:center;line-height:1.4">University IoT Research<br/>Landslide Early Warning System</div>
+  </div>
+</aside>
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- ── MAIN AREA ────────────────────────────────── -->
+<!-- ══════════════════════════════════════════════ -->
+<div class="flex-1 flex flex-col overflow-hidden">
+
+  <!-- Top Bar -->
+  <header class="topbar px-6 py-3 flex items-center justify-between flex-shrink-0 topbar-responsive">
+    <div>
+      <div class="flex items-center gap-2">
+        <div style="font-size:17px;font-weight:700;color:#1E293B" id="pageTitle">Landslide Monitoring Dashboard</div>
+        <span class="connection-badge conn-online" id="connBadge">
+          <span class="status-dot pulse" style="background:#22C55E;width:6px;height:6px"></span> Live
+        </span>
+      </div>
+      <div class="flex items-center gap-2 mt-0.5">
+        <iconify-icon icon="material-symbols:calendar-today-outline-rounded" style="color:#94A3B8;font-size:13px"></iconify-icon>
+        <span style="font-size:12px;color:#94A3B8" id="datetimeDisplay">Loading...</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-3 topbar-actions">
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg" style="background:#F8FAFC;border:1px solid #E2E8F0">
+        <iconify-icon icon="material-symbols:database" style="color:#3B82F6;font-size:14px"></iconify-icon>
+        <span style="font-size:11px;color:#64748B;font-weight:600" id="recordCountBadge">0 records</span>
+      </div>
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg" style="background:#F8FAFC;border:1px solid #E2E8F0" id="uptimeBadge">
+        <iconify-icon icon="material-symbols:timer-outline" style="color:#F59E0B;font-size:14px"></iconify-icon>
+        <span style="font-size:11px;color:#64748B;font-weight:600" id="uptimeVal">Uptime: --</span>
+      </div>
+      <button class="btn-primary btn-green" onclick="downloadExcel()">
+        <iconify-icon icon="material-symbols:download-rounded" style="font-size:16px"></iconify-icon> Download Excel
+      </button>
+      <button class="btn-primary btn-red-outline" onclick="showResetModal()">
+        <iconify-icon icon="material-symbols:delete-outline-rounded" style="font-size:16px"></iconify-icon> Reset Database
+      </button>
+    </div>
+  </header>
+
+  <!-- Scrollable Content -->
+  <main class="flex-1 overflow-y-auto px-6 py-5">
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- ── DASHBOARD PAGE ──────────────────────────────── -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div id="page-dashboard" class="page-section active">
+
+      <!-- ═══════════ WEATHER ROW ═══════════ -->
+      <div class="grid gap-3 mb-5 grid-5" style="grid-template-columns:repeat(5,1fr)">
+        <div class="weather-widget p-3.5 animate-in" style="animation-delay:0s">
+          <div class="relative z-10">
+            <div style="font-size:10px;font-weight:600;opacity:0.7;text-transform:uppercase;letter-spacing:0.5px">Temperature</div>
+            <div class="flex items-end gap-1 mt-1"><span id="wTemp" style="font-size:26px;font-weight:800;line-height:1">--</span><span style="font-size:13px;opacity:0.8;margin-bottom:2px">°C</span></div>
+            <div class="flex items-center gap-1 mt-1.5" style="opacity:0.7"><iconify-icon icon="material-symbols:thermostat" style="font-size:13px"></iconify-icon><span style="font-size:10px" id="wTempSt">Fetching...</span></div>
+          </div>
+        </div>
+        <div class="weather-widget p-3.5 animate-in" style="background:linear-gradient(135deg,#0369A1,#0EA5E9);animation-delay:0.05s">
+          <div class="relative z-10">
+            <div style="font-size:10px;font-weight:600;opacity:0.7;text-transform:uppercase;letter-spacing:0.5px">Humidity</div>
+            <div class="flex items-end gap-1 mt-1"><span id="wHum" style="font-size:26px;font-weight:800;line-height:1">--</span><span style="font-size:13px;opacity:0.8;margin-bottom:2px">%</span></div>
+            <div class="flex items-center gap-1 mt-1.5" style="opacity:0.7"><iconify-icon icon="material-symbols:humidity-percentage" style="font-size:13px"></iconify-icon><span style="font-size:10px" id="wHumSt">Fetching...</span></div>
+          </div>
+        </div>
+        <div class="weather-widget p-3.5 animate-in" style="background:linear-gradient(135deg,#4338CA,#7C3AED);animation-delay:0.1s">
+          <div class="relative z-10">
+            <div style="font-size:10px;font-weight:600;opacity:0.7;text-transform:uppercase;letter-spacing:0.5px">Rainfall</div>
+            <div class="flex items-end gap-1 mt-1"><span id="wRain" style="font-size:26px;font-weight:800;line-height:1">--</span><span style="font-size:13px;opacity:0.8;margin-bottom:2px">mm</span></div>
+            <div class="flex items-center gap-1 mt-1.5" style="opacity:0.7"><iconify-icon icon="material-symbols:rainy" style="font-size:13px"></iconify-icon><span style="font-size:10px" id="wRainSt">Fetching...</span></div>
+          </div>
+        </div>
+        <div class="weather-widget p-3.5 animate-in" style="background:linear-gradient(135deg,#0F766E,#14B8A6);animation-delay:0.15s">
+          <div class="relative z-10">
+            <div style="font-size:10px;font-weight:600;opacity:0.7;text-transform:uppercase;letter-spacing:0.5px">Wind Speed</div>
+            <div class="flex items-end gap-1 mt-1"><span id="wWind" style="font-size:26px;font-weight:800;line-height:1">--</span><span style="font-size:13px;opacity:0.8;margin-bottom:2px">km/h</span></div>
+            <div class="flex items-center gap-1 mt-1.5" style="opacity:0.7"><iconify-icon icon="material-symbols:air" style="font-size:13px"></iconify-icon><span style="font-size:10px" id="wWindDir">Fetching...</span></div>
+          </div>
+        </div>
+        <div class="weather-widget p-3.5 animate-in" style="background:linear-gradient(135deg,#92400E,#D97706);animation-delay:0.2s">
+          <div class="relative z-10">
+            <div style="font-size:10px;font-weight:600;opacity:0.7;text-transform:uppercase;letter-spacing:0.5px">Wind Dir</div>
+            <div class="flex items-end gap-1 mt-1"><span id="wWindDeg" style="font-size:26px;font-weight:800;line-height:1">--</span><span style="font-size:13px;opacity:0.8;margin-bottom:2px">°</span></div>
+            <div class="flex items-center gap-1 mt-1.5" style="opacity:0.7"><iconify-icon icon="material-symbols:explore-outline" style="font-size:13px"></iconify-icon><span style="font-size:10px" id="wWindLabel">Fetching...</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ SENSOR CARDS ROW ═══════════ -->
+      <div class="grid gap-4 mb-5 grid-4" style="grid-template-columns:repeat(5,1fr)">
+
+        <!-- Soil Moisture -->
+        <div class="stat-card p-4 animate-in" style="animation-delay:0.05s">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:#DCFCE7">
+                <iconify-icon icon="material-symbols:water-drop-rounded" style="color:#22C55E;font-size:20px"></iconify-icon>
+              </div>
+              <div>
+                <div style="font-size:10px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:0.5px">Soil Moisture</div>
+                <div style="font-size:9.5px;color:#CBD5E1">3 Sensors Avg</div>
+              </div>
+            </div>
+            <span class="tag tag-safe" id="soilStatus">--</span>
+          </div>
+          <div class="flex items-center gap-4 mb-2">
+            <svg width="68" height="68" viewBox="0 0 68 68">
+              <circle cx="34" cy="34" r="28" fill="none" stroke="#E2E8F0" stroke-width="5"/>
+              <circle id="soilRing" cx="34" cy="34" r="28" fill="none" stroke="#22C55E" stroke-width="5"
+                stroke-dasharray="175.9" stroke-dashoffset="175.9" stroke-linecap="round"
+                style="transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset 1s ease"/>
+              <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
+                    fill="#1E293B" font-size="14" font-weight="800" id="soilRingText">--%</text>
+            </svg>
+            <div>
+              <div style="font-size:10px;color:#94A3B8;font-weight:600">Average</div>
+              <div id="soilVal" style="font-size:28px;font-weight:800;color:#1E293B;line-height:1.1">--<span style="font-size:14px;color:#94A3B8">%</span></div>
+            </div>
+          </div>
+          <!-- 3 sensor mini bars -->
+          <div class="flex flex-col gap-1" style="margin-bottom:6px">
+            <div class="flex items-center gap-2">
+              <span style="font-size:9px;color:#64748B;font-weight:600;width:18px">S1</span>
+              <div style="flex:1;height:5px;border-radius:3px;background:#E2E8F0;overflow:hidden"><div id="s1Bar" style="height:100%;border-radius:3px;background:#22C55E;transition:width 1s ease;width:0%"></div></div>
+              <span style="font-size:9px;color:#1E293B;font-weight:700;width:26px;text-align:right" id="s1Val">--%</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span style="font-size:9px;color:#64748B;font-weight:600;width:18px">S2</span>
+              <div style="flex:1;height:5px;border-radius:3px;background:#E2E8F0;overflow:hidden"><div id="s2Bar" style="height:100%;border-radius:3px;background:#3B82F6;transition:width 1s ease;width:0%"></div></div>
+              <span style="font-size:9px;color:#1E293B;font-weight:700;width:26px;text-align:right" id="s2Val">--%</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span style="font-size:9px;color:#64748B;font-weight:600;width:18px">S3</span>
+              <div style="flex:1;height:5px;border-radius:3px;background:#E2E8F0;overflow:hidden"><div id="s3Bar" style="height:100%;border-radius:3px;background:#F59E0B;transition:width 1s ease;width:0%"></div></div>
+              <span style="font-size:9px;color:#1E293B;font-weight:700;width:26px;text-align:right" id="s3Val">--%</span>
+            </div>
+          </div>
+          <div class="soil-gauge-bg" style="padding:8px 10px">
+            <div class="flex justify-between mb-1">
+              <span style="font-size:9px;color:#64748B;font-weight:600">Critical Threshold</span>
+              <span style="font-size:10px;color:#EF4444;font-weight:700">80%</span>
+            </div>
+            <div class="soil-gauge-bar">
+              <div class="soil-gauge-fill" id="soilBar" style="width:0%;background:linear-gradient(90deg,#22C55E,#16A34A)"></div>
+            </div>
+            <div class="flex justify-between mt-1"><span style="font-size:8px;color:#CBD5E1">DRY (0%)</span><span style="font-size:8px;color:#EF4444;font-weight:600">CRITICAL (80%)</span><span style="font-size:8px;color:#CBD5E1">WET (100%)</span></div>
+          </div>
+        </div>
+
+        <!-- ADXL345 Accelerometer -->
+        <div class="stat-card p-4 animate-in" style="animation-delay:0.1s">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:#EFF6FF">
+                <iconify-icon icon="material-symbols:straighten-rounded" style="color:#3B82F6;font-size:20px"></iconify-icon>
+              </div>
+              <div>
+                <div style="font-size:10px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:0.5px">Accelerometer</div>
+                <div style="font-size:9.5px;color:#CBD5E1">ADXL345 Tilt</div>
+              </div>
+            </div>
+            <span class="tag tag-safe" id="tiltStatus">--</span>
+          </div>
+          <div class="flex flex-col gap-2">
+            <div>
+              <div class="flex justify-between mb-1"><span style="font-size:10px;color:#64748B;font-weight:600">X Axis</span><span id="axisX" style="font-size:11px;color:#1E293B;font-weight:700">--</span></div>
+              <div class="tilt-axis-bar"><div class="tilt-axis-fill" id="barX" style="width:0%;background:#3B82F6"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between mb-1"><span style="font-size:10px;color:#64748B;font-weight:600">Y Axis</span><span id="axisY" style="font-size:11px;color:#1E293B;font-weight:700">--</span></div>
+              <div class="tilt-axis-bar"><div class="tilt-axis-fill" id="barY" style="width:0%;background:#22C55E"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between mb-1"><span style="font-size:10px;color:#64748B;font-weight:600">Z Axis</span><span id="axisZ" style="font-size:11px;color:#1E293B;font-weight:700">--</span></div>
+              <div class="tilt-axis-bar"><div class="tilt-axis-fill" id="barZ" style="width:0%;background:#F59E0B"></div></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 mt-2 pt-2" style="border-top:1px solid #F1F5F9">
+            <span style="font-size:10px;color:#94A3B8;font-weight:600">Magnitude:</span>
+            <span style="font-size:12px;color:#1E293B;font-weight:700" id="accelMag">-- m/s²</span>
+          </div>
+        </div>
+
+        <!-- GPS Tracker -->
+        <div class="stat-card p-4 animate-in" style="animation-delay:0.15s">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-xl flex items-center justify-center" id="gpsIconBg" style="background:#FEF3C7">
+                <iconify-icon icon="material-symbols:location-on-rounded" style="font-size:20px" id="gpsIconEl" class="text-amber-500"></iconify-icon>
+              </div>
+              <div>
+                <div style="font-size:10px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:0.5px">GPS Module</div>
+                <div style="font-size:9.5px;color:#CBD5E1">NEO-6M Tracker</div>
+              </div>
+            </div>
+            <span class="tag tag-warning" id="gpsFixTag">No Fix</span>
+          </div>
+          <div style="background:#F8FAFC;border-radius:10px;padding:10px 12px;margin-bottom:8px">
+            <div class="gps-info-row" style="border-bottom:1px solid #E2E8F0;padding-bottom:6px;margin-bottom:4px">
+              <span class="gps-label" style="color:#64748B">Latitude</span>
+              <span class="gps-value" style="color:#1E293B;font-size:12px" id="gpsLat">--</span>
+            </div>
+            <div class="gps-info-row" style="border-bottom:1px solid #E2E8F0;padding-bottom:6px;margin-bottom:4px">
+              <span class="gps-label" style="color:#64748B">Longitude</span>
+              <span class="gps-value" style="color:#1E293B;font-size:12px" id="gpsLon">--</span>
+            </div>
+            <div class="gps-info-row">
+              <span class="gps-label" style="color:#64748B">Satellites</span>
+              <span class="gps-value" style="color:#1E293B;font-size:12px" id="gpsSat">0</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5" style="font-size:10px;color:#94A3B8">
+            <iconify-icon icon="material-symbols:info-outline" style="font-size:12px"></iconify-icon>
+            <span id="gpsNote">Weather uses browser location until GPS fix</span>
+          </div>
+        </div>
+
+        <!-- Weight Sensor -->
+        <div class="stat-card p-4 animate-in" style="animation-delay:0.18s">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:#F3E8FF">
+                <iconify-icon icon="material-symbols:weight" style="color:#9333EA;font-size:20px"></iconify-icon>
+              </div>
+              <div>
+                <div style="font-size:10px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:0.5px">Weight</div>
+                <div style="font-size:9.5px;color:#CBD5E1">Load Cell Sensor</div>
+              </div>
+            </div>
+            <span class="tag" id="weightStatus" style="background:#F3E8FF;color:#7E22CE">--</span>
+          </div>
+          <div class="flex items-center gap-4 mb-3">
+            <svg width="68" height="68" viewBox="0 0 68 68">
+              <circle cx="34" cy="34" r="28" fill="none" stroke="#E2E8F0" stroke-width="5"/>
+              <circle id="weightRing" cx="34" cy="34" r="28" fill="none" stroke="#9333EA" stroke-width="5"
+                stroke-dasharray="175.9" stroke-dashoffset="175.9" stroke-linecap="round"
+                style="transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset 1s ease"/>
+              <text x="50%" y="46%" text-anchor="middle" dominant-baseline="middle"
+                    fill="#1E293B" font-size="11" font-weight="800" id="weightRingText">--</text>
+              <text x="50%" y="62%" text-anchor="middle" dominant-baseline="middle"
+                    fill="#94A3B8" font-size="8">g</text>
+            </svg>
+            <div>
+              <div style="font-size:10px;color:#94A3B8;font-weight:600">Raw Value</div>
+              <div id="weightVal" style="font-size:26px;font-weight:800;color:#1E293B;line-height:1.1">--<span style="font-size:13px;color:#94A3B8"> g</span></div>
+            </div>
+          </div>
+          <div class="soil-gauge-bg">
+            <div class="flex justify-between mb-1.5">
+              <span style="font-size:10px;color:#64748B;font-weight:600">Load Level</span>
+              <span style="font-size:11px;color:#9333EA;font-weight:700" id="weightPct">--%</span>
+            </div>
+            <div class="soil-gauge-bar">
+              <div id="weightBar" style="height:100%;border-radius:5px;width:0%;background:linear-gradient(90deg,#9333EA,#A855F7);transition:width 1s ease"></div>
+            </div>
+            <div class="flex justify-between mt-1"><span style="font-size:8px;color:#CBD5E1">0 g</span><span style="font-size:8px;color:#CBD5E1">2000 g</span></div>
+          </div>
+        </div>
+
+        <!-- Overall Risk Level -->
+        <div class="stat-card p-4 animate-in" style="animation-delay:0.2s">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-xl flex items-center justify-center" id="riskIcon" style="background:#DCFCE7">
+                <iconify-icon icon="material-symbols:shield-with-heart-outline-rounded" style="color:#22C55E;font-size:20px" id="riskIconInner"></iconify-icon>
+              </div>
+              <div>
+                <div style="font-size:10px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:0.5px">Overall Risk</div>
+                <div style="font-size:9.5px;color:#CBD5E1">System Assessment</div>
+              </div>
+            </div>
+          </div>
+          <div class="flex flex-col items-center gap-3 mt-3">
+            <div id="riskBadge" class="risk-badge" style="background:#DCFCE7;color:#16A34A;font-size:20px;padding:10px 36px">SAFE</div>
+            <div class="flex gap-3 mt-1">
+              <div class="flex items-center gap-1"><div style="width:8px;height:8px;border-radius:50%;background:#22C55E"></div><span style="font-size:9px;color:#64748B">Safe</span></div>
+              <div class="flex items-center gap-1"><div style="width:8px;height:8px;border-radius:50%;background:#F59E0B"></div><span style="font-size:9px;color:#64748B">Warning</span></div>
+              <div class="flex items-center gap-1"><div style="width:8px;height:8px;border-radius:50%;background:#EF4444"></div><span style="font-size:9px;color:#64748B">Danger</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ GPS MAP + CHARTS ═══════════ -->
+      <div class="grid gap-4 mb-5 grid-3" style="grid-template-columns:1fr 1fr 1fr">
+        <!-- GPS Map -->
+        <div class="chart-card p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#1E293B">GPS Location</div>
+              <div style="font-size:11px;color:#94A3B8" id="mapSubtitle">Initializing map...</div>
+            </div>
+            <div class="flex items-center gap-1 px-2 py-1 rounded-md" id="gpsBadgeSmall" style="background:#FEF3C7;border:1px solid #FDE68A">
+              <iconify-icon icon="material-symbols:satellite-alt" style="color:#D97706;font-size:12px"></iconify-icon>
+              <span style="font-size:10px;color:#D97706;font-weight:600" id="gpsBadgeText">0 sats</span>
+            </div>
+          </div>
+          <div id="gpsMap" style="height:220px;border-radius:12px;z-index:1"></div>
+        </div>
+
+        <!-- Soil Moisture Chart (3 sensors + avg) -->
+        <div class="chart-card p-4">
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#1E293B">Soil Moisture Trend</div>
+              <div style="font-size:11px;color:#94A3B8">3 Sensors + Average</div>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <div class="flex items-center gap-1"><div style="width:6px;height:6px;border-radius:50%;background:#22C55E"></div><span style="font-size:9px;color:#94A3B8">S1</span></div>
+              <div class="flex items-center gap-1"><div style="width:6px;height:6px;border-radius:50%;background:#3B82F6"></div><span style="font-size:9px;color:#94A3B8">S2</span></div>
+              <div class="flex items-center gap-1"><div style="width:6px;height:6px;border-radius:50%;background:#F59E0B"></div><span style="font-size:9px;color:#94A3B8">S3</span></div>
+              <div class="flex items-center gap-1"><div style="width:8px;height:2px;background:#EF4444;border-radius:1px"></div><span style="font-size:9px;color:#94A3B8">Avg</span></div>
+            </div>
+          </div>
+          <!-- Critical average display -->
+          <div style="background:#FFF7F7;border:1px solid #FECACA;border-radius:8px;padding:6px 10px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:10px;color:#64748B;font-weight:600">Current Average</span>
+            <div class="flex items-center gap-2">
+              <span style="font-size:14px;font-weight:800;color:#1E293B" id="soilAvgDisplay">--%</span>
+              <span style="font-size:9px;font-weight:600;padding:2px 6px;border-radius:5px" id="soilCriticalTag" style="background:#DCFCE7;color:#16A34A">SAFE</span>
+            </div>
+          </div>
+          <div id="moistureChart" style="height:185px"></div>
+        </div>
+
+        <!-- Accelerometer Chart -->
+        <div class="chart-card p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#1E293B">Accelerometer Trend</div>
+              <div style="font-size:11px;color:#94A3B8">X, Y, Z axes (m/s²)</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="flex items-center gap-1"><div style="width:6px;height:6px;border-radius:50%;background:#3B82F6"></div><span style="font-size:9px;color:#94A3B8">X</span></div>
+              <div class="flex items-center gap-1"><div style="width:6px;height:6px;border-radius:50%;background:#22C55E"></div><span style="font-size:9px;color:#94A3B8">Y</span></div>
+              <div class="flex items-center gap-1"><div style="width:6px;height:6px;border-radius:50%;background:#F59E0B"></div><span style="font-size:9px;color:#94A3B8">Z</span></div>
+            </div>
+          </div>
+          <div id="accelChart" style="height:220px"></div>
+        </div>
+      </div>
+
+      <!-- ═══════════ DATA TABLE ═══════════ -->
+      <div class="chart-card p-5 mb-5">
+        <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#1E293B">Sensor Data Log</div>
+            <div style="font-size:12px;color:#94A3B8" id="tableCount">Loading from Firebase...</div>
+          </div>
+          <div class="relative flex items-center">
+            <iconify-icon icon="material-symbols:search-rounded" style="position:absolute;left:10px;color:#94A3B8;font-size:16px;z-index:1"></iconify-icon>
+            <input class="search-input" id="tableSearch" type="text" placeholder="Search records..." oninput="filterTable()" />
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr style="border-bottom:2px solid #F1F5F9">
+                <th style="text-align:left;padding:9px 10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Timestamp</th>
+                <th style="text-align:left;padding:9px 10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Soil Avg%</th>
+                <th style="text-align:left;padding:9px 10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">S1/S2/S3</th>
+                <th style="text-align:left;padding:9px 10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Accel X</th>
+                <th style="text-align:left;padding:9px 10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Accel Y</th>
+                <th style="text-align:left;padding:9px 10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Accel Z</th>
+                <th style="text-align:left;padding:9px 10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">GPS Fix</th>
+                <th style="text-align:left;padding:9px 10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Lat / Lon</th>
+                <th style="text-align:left;padding:9px 10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Sats</th>
+                <th style="text-align:left;padding:9px 10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Risk</th>
+              </tr>
+            </thead>
+            <tbody id="sensorTableBody">
+              <tr><td colspan="10" style="padding:40px;text-align:center;color:#CBD5E1;font-size:13px">
+                <iconify-icon icon="material-symbols:cloud-sync-outline-rounded" style="font-size:32px;color:#E2E8F0;display:block;margin:0 auto 8px"></iconify-icon>Connecting to Firebase...
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="flex items-center justify-between mt-4">
+          <div style="font-size:12px;color:#94A3B8" id="paginationInfo">Page 1 of 1</div>
+          <div class="flex items-center gap-1" id="paginationBtns"></div>
+        </div>
+      </div>
+
+    </div><!-- /page-dashboard -->
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- ── LIVE MONITORING PAGE ─────────────────────────── -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div id="page-live" class="page-section">
+      <div class="mb-5">
+        <div style="font-size:18px;font-weight:800;color:#1E293B;margin-bottom:4px">Live Sensor Monitoring</div>
+        <div style="font-size:13px;color:#94A3B8">Real-time sensor readings from ESP32 via Firebase</div>
+      </div>
+
+      <!-- Live sensor gauges -->
+      <div class="grid gap-4 mb-5" style="grid-template-columns:repeat(3,1fr)">
+
+        <!-- Live Soil Moisture -->
+        <div class="live-sensor-card">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#22C55E,#16A34A)">
+              <iconify-icon icon="material-symbols:water-drop-rounded" style="color:#fff;font-size:22px"></iconify-icon>
+            </div>
+            <div>
+              <div style="font-size:14px;font-weight:700;color:#1E293B">Soil Moisture</div>
+              <div style="font-size:11px;color:#94A3B8">3-Sensor Array</div>
+            </div>
+            <span class="tag tag-safe ml-auto" id="liveSoilStatus">--</span>
+          </div>
+
+          <!-- Big Gauge -->
+          <div class="flex flex-col items-center mb-4">
+            <svg width="140" height="140" viewBox="0 0 140 140">
+              <circle cx="70" cy="70" r="56" fill="none" stroke="#F1F5F9" stroke-width="10"/>
+              <circle id="liveSoilRing" cx="70" cy="70" r="56" fill="none" stroke="#22C55E" stroke-width="10"
+                stroke-dasharray="351.9" stroke-dashoffset="351.9" stroke-linecap="round"
+                style="transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset 1.2s ease"/>
+              <text x="50%" y="44%" text-anchor="middle" dominant-baseline="middle" fill="#1E293B" font-size="28" font-weight="800" id="liveSoilAvgText">--</text>
+              <text x="50%" y="60%" text-anchor="middle" dominant-baseline="middle" fill="#94A3B8" font-size="12">%  AVG</text>
+            </svg>
+          </div>
+
+          <!-- 3 Sensor bars -->
+          <div class="flex flex-col gap-3">
+            <div>
+              <div class="flex justify-between mb-1"><span style="font-size:11px;color:#64748B;font-weight:600">Sensor 1</span><span style="font-size:12px;color:#22C55E;font-weight:700" id="liveS1">--%</span></div>
+              <div style="height:8px;border-radius:4px;background:#E2E8F0;overflow:hidden"><div id="liveS1Bar" style="height:100%;border-radius:4px;background:linear-gradient(90deg,#22C55E,#4ADE80);transition:width 1s ease;width:0%"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between mb-1"><span style="font-size:11px;color:#64748B;font-weight:600">Sensor 2</span><span style="font-size:12px;color:#3B82F6;font-weight:700" id="liveS2">--%</span></div>
+              <div style="height:8px;border-radius:4px;background:#E2E8F0;overflow:hidden"><div id="liveS2Bar" style="height:100%;border-radius:4px;background:linear-gradient(90deg,#3B82F6,#60A5FA);transition:width 1s ease;width:0%"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between mb-1"><span style="font-size:11px;color:#64748B;font-weight:600">Sensor 3</span><span style="font-size:12px;color:#F59E0B;font-weight:700" id="liveS3">--%</span></div>
+              <div style="height:8px;border-radius:4px;background:#E2E8F0;overflow:hidden"><div id="liveS3Bar" style="height:100%;border-radius:4px;background:linear-gradient(90deg,#F59E0B,#FCD34D);transition:width 1s ease;width:0%"></div></div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between mt-3 pt-3" style="border-top:1px solid #F1F5F9">
+            <span style="font-size:10px;color:#94A3B8">Critical threshold: 80%</span>
+            <span style="font-size:12px;font-weight:700;color:#EF4444" id="liveCritical">--</span>
+          </div>
+        </div>
+
+        <!-- Live Accelerometer -->
+        <div class="live-sensor-card">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#3B82F6,#1D4ED8)">
+              <iconify-icon icon="material-symbols:straighten-rounded" style="color:#fff;font-size:22px"></iconify-icon>
+            </div>
+            <div>
+              <div style="font-size:14px;font-weight:700;color:#1E293B">Accelerometer</div>
+              <div style="font-size:11px;color:#94A3B8">ADXL345</div>
+            </div>
+            <span class="tag tag-safe ml-auto" id="liveTiltStatus">--</span>
+          </div>
+
+          <div class="grid gap-4 mb-4" style="grid-template-columns:repeat(3,1fr)">
+            <!-- X -->
+            <div style="text-align:center;background:#EFF6FF;border-radius:12px;padding:12px 8px">
+              <div style="font-size:10px;color:#3B82F6;font-weight:700;margin-bottom:4px">X AXIS</div>
+              <div style="font-size:22px;font-weight:800;color:#1E293B" id="liveAxX">--</div>
+              <div style="font-size:9px;color:#94A3B8">m/s²</div>
+            </div>
+            <!-- Y -->
+            <div style="text-align:center;background:#F0FDF4;border-radius:12px;padding:12px 8px">
+              <div style="font-size:10px;color:#22C55E;font-weight:700;margin-bottom:4px">Y AXIS</div>
+              <div style="font-size:22px;font-weight:800;color:#1E293B" id="liveAxY">--</div>
+              <div style="font-size:9px;color:#94A3B8">m/s²</div>
+            </div>
+            <!-- Z -->
+            <div style="text-align:center;background:#FFFBEB;border-radius:12px;padding:12px 8px">
+              <div style="font-size:10px;color:#F59E0B;font-weight:700;margin-bottom:4px">Z AXIS</div>
+              <div style="font-size:22px;font-weight:800;color:#1E293B" id="liveAxZ">--</div>
+              <div style="font-size:9px;color:#94A3B8">m/s²</div>
+            </div>
+          </div>
+
+          <div style="background:#F8FAFC;border-radius:12px;padding:14px">
+            <div class="flex items-center justify-between mb-2">
+              <span style="font-size:12px;color:#64748B;font-weight:600">Total Magnitude</span>
+              <span style="font-size:16px;font-weight:800;color:#1E293B" id="liveAccelMag">-- m/s²</span>
+            </div>
+            <div style="height:8px;border-radius:4px;background:#E2E8F0;overflow:hidden">
+              <div id="liveMagBar" style="height:100%;border-radius:4px;background:linear-gradient(90deg,#3B82F6,#7C3AED);transition:width 1s ease;width:0%"></div>
+            </div>
+            <div class="flex justify-between mt-1"><span style="font-size:8px;color:#CBD5E1">0</span><span style="font-size:8px;color:#EF4444">Gravity: 9.81</span><span style="font-size:8px;color:#CBD5E1">20</span></div>
+          </div>
+
+          <div class="flex items-center justify-between mt-3 pt-3" style="border-top:1px solid #F1F5F9">
+            <span style="font-size:10px;color:#94A3B8">Tilt deviation from gravity</span>
+            <span style="font-size:12px;font-weight:700" id="liveTiltDev" style="color:#22C55E">-- m/s²</span>
+          </div>
+        </div>
+
+        <!-- Live GPS -->
+        <div class="live-sensor-card">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center" id="liveGpsIconBg" style="background:linear-gradient(135deg,#F59E0B,#D97706)">
+              <iconify-icon icon="material-symbols:location-on-rounded" style="color:#fff;font-size:22px" id="liveGpsIcon"></iconify-icon>
+            </div>
+            <div>
+              <div style="font-size:14px;font-weight:700;color:#1E293B">GPS Location</div>
+              <div style="font-size:11px;color:#94A3B8">NEO-6M Module</div>
+            </div>
+            <span class="tag tag-warning ml-auto" id="liveGpsTag">No Fix</span>
+          </div>
+
+          <div id="liveGpsMap" style="height:180px;border-radius:12px;background:#F1F5F9;margin-bottom:12px"></div>
+
+          <div class="flex flex-col gap-2">
+            <div style="background:#F8FAFC;border-radius:10px;padding:10px 14px">
+              <div class="flex justify-between items-center">
+                <span style="font-size:11px;color:#64748B;font-weight:600">Latitude</span>
+                <span style="font-size:13px;font-weight:700;color:#1E293B;font-family:monospace" id="liveGpsLat">--</span>
+              </div>
+            </div>
+            <div style="background:#F8FAFC;border-radius:10px;padding:10px 14px">
+              <div class="flex justify-between items-center">
+                <span style="font-size:11px;color:#64748B;font-weight:600">Longitude</span>
+                <span style="font-size:13px;font-weight:700;color:#1E293B;font-family:monospace" id="liveGpsLon">--</span>
+              </div>
+            </div>
+            <div style="background:#F8FAFC;border-radius:10px;padding:10px 14px">
+              <div class="flex justify-between items-center">
+                <span style="font-size:11px;color:#64748B;font-weight:600">Satellites</span>
+                <span style="font-size:13px;font-weight:700;color:#1E293B" id="liveGpsSat">--</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Soil Moisture Chart full width -->
+      <div class="chart-card p-4 mb-5">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#1E293B">Soil Moisture Live Chart — All 3 Sensors</div>
+            <div style="font-size:11px;color:#94A3B8">Real-time percentage readings</div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-1"><div style="width:8px;height:8px;border-radius:50%;background:#22C55E"></div><span style="font-size:10px;color:#94A3B8">Sensor 1</span></div>
+            <div class="flex items-center gap-1"><div style="width:8px;height:8px;border-radius:50%;background:#3B82F6"></div><span style="font-size:10px;color:#94A3B8">Sensor 2</span></div>
+            <div class="flex items-center gap-1"><div style="width:8px;height:8px;border-radius:50%;background:#F59E0B"></div><span style="font-size:10px;color:#94A3B8">Sensor 3</span></div>
+            <div class="flex items-center gap-1"><div style="width:10px;height:3px;background:#EF4444;border-radius:2px"></div><span style="font-size:10px;color:#94A3B8">Average</span></div>
+          </div>
+        </div>
+        <div id="liveMoistureChart" style="height:260px"></div>
+      </div>
+    </div><!-- /page-live -->
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- ── DATA HISTORY PAGE ────────────────────────────── -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div id="page-history" class="page-section">
+      <div class="mb-5 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <div style="font-size:18px;font-weight:800;color:#1E293B;margin-bottom:4px">Data History</div>
+          <div style="font-size:13px;color:#94A3B8">Complete sensor log — newest records first</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="history-filter-btn active" onclick="setHistoryFilter('all',this)" id="hfAll">All</button>
+          <button class="history-filter-btn" onclick="setHistoryFilter('danger',this)" id="hfDanger">Danger</button>
+          <button class="history-filter-btn" onclick="setHistoryFilter('warning',this)" id="hfWarning">Warning</button>
+          <button class="history-filter-btn" onclick="setHistoryFilter('safe',this)" id="hfSafe">Safe</button>
+          <div class="relative flex items-center">
+            <iconify-icon icon="material-symbols:search-rounded" style="position:absolute;left:10px;color:#94A3B8;font-size:16px;z-index:1"></iconify-icon>
+            <input class="search-input" id="historySearch" type="text" placeholder="Search..." oninput="filterHistory()" />
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-card p-5">
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr style="border-bottom:2px solid #F1F5F9">
+                <th style="text-align:left;padding:10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">#</th>
+                <th style="text-align:left;padding:10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Date & Time</th>
+                <th style="text-align:left;padding:10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Soil Avg</th>
+                <th style="text-align:left;padding:10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">S1 / S2 / S3</th>
+                <th style="text-align:left;padding:10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Accel X</th>
+                <th style="text-align:left;padding:10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Accel Y</th>
+                <th style="text-align:left;padding:10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Accel Z</th>
+                <th style="text-align:left;padding:10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Lat / Lon</th>
+                <th style="text-align:left;padding:10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Uptime</th>
+                <th style="text-align:left;padding:10px;font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Risk</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr><td colspan="10" style="padding:40px;text-align:center;color:#CBD5E1;font-size:13px">
+                <iconify-icon icon="material-symbols:cloud-sync-outline-rounded" style="font-size:32px;color:#E2E8F0;display:block;margin:0 auto 8px"></iconify-icon>Loading data...
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="flex items-center justify-between mt-4">
+          <div style="font-size:12px;color:#94A3B8" id="historyPaginationInfo">Page 1 of 1</div>
+          <div class="flex items-center gap-1" id="historyPaginationBtns"></div>
+        </div>
+      </div>
+    </div><!-- /page-history -->
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- ── SETTINGS PAGE ────────────────────────────────── -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div id="page-settings" class="page-section">
+      <div class="mb-5">
+        <div style="font-size:18px;font-weight:800;color:#1E293B;margin-bottom:4px">Settings</div>
+        <div style="font-size:13px;color:#94A3B8">Configure system parameters and alert thresholds</div>
+      </div>
+
+      <div class="grid gap-4" style="grid-template-columns:1fr 1fr">
+
+        <!-- Firebase Config -->
+        <div class="settings-section">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:#FEF3C7">
+              <iconify-icon icon="material-symbols:database" style="color:#D97706;font-size:20px"></iconify-icon>
+            </div>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#1E293B">Firebase Configuration</div>
+              <div style="font-size:11px;color:#94A3B8">Realtime Database connection</div>
+            </div>
+          </div>
+          <div class="flex flex-col gap-3">
+            <div>
+              <label style="font-size:11px;color:#64748B;font-weight:600;display:block;margin-bottom:4px">Database URL</label>
+              <input class="settings-input" id="settFirebaseUrl" value="https://landslide-ews-12015-default-rtdb.asia-southeast1.firebasedatabase.app" readonly style="background:#F8FAFC;color:#94A3B8"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#64748B;font-weight:600;display:block;margin-bottom:4px">Sensors Path</label>
+              <input class="settings-input" id="settSensorsPath" value="/sensors" readonly style="background:#F8FAFC;color:#94A3B8"/>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-xl" style="background:#F0FDF4;border:1px solid #BBF7D0">
+              <span style="font-size:12px;color:#16A34A;font-weight:600">Connection Status</span>
+              <span style="font-size:12px;font-weight:700;color:#22C55E" id="settDbStatus">Connected ✓</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Alert Thresholds -->
+        <div class="settings-section">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:#FEE2E2">
+              <iconify-icon icon="material-symbols:warning-outline-rounded" style="color:#EF4444;font-size:20px"></iconify-icon>
+            </div>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#1E293B">Alert Thresholds</div>
+              <div style="font-size:11px;color:#94A3B8">Risk level trigger values for all sensors</div>
+            </div>
+          </div>
+          <div class="flex flex-col gap-3">
+            <!-- Soil Moisture Thresholds -->
+            <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:10px 12px;margin-bottom:2px">
+              <div style="font-size:10px;font-weight:700;color:#16A34A;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px">🌱 Soil Moisture</div>
+              <div style="display:flex;gap:10px">
+                <div style="flex:1">
+                  <label style="font-size:11px;color:#64748B;font-weight:600;display:block;margin-bottom:4px">Warning (%)</label>
+                  <input class="settings-input" id="settSoilWarn" type="number" value="65" min="0" max="100" style="background:#fff"/>
+                </div>
+                <div style="flex:1">
+                  <label style="font-size:11px;color:#64748B;font-weight:600;display:block;margin-bottom:4px">Critical (%)</label>
+                  <input class="settings-input" id="settSoilCrit" type="number" value="80" min="0" max="100" style="background:#fff"/>
+                </div>
+              </div>
+              <div style="font-size:9.5px;color:#94A3B8;margin-top:6px">Current: Warning ≥ <span id="curSoilWarnDisplay" style="font-weight:700;color:#D97706">65%</span> · Critical ≥ <span id="curSoilCritDisplay" style="font-weight:700;color:#DC2626">80%</span></div>
+            </div>
+            <!-- Accelerometer Thresholds -->
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:10px 12px;margin-bottom:2px">
+              <div style="font-size:10px;font-weight:700;color:#2563EB;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px">📐 Accelerometer (ADXL345)</div>
+              <div style="display:flex;gap:10px">
+                <div style="flex:1">
+                  <label style="font-size:11px;color:#64748B;font-weight:600;display:block;margin-bottom:4px">Warning (m/s²)</label>
+                  <input class="settings-input" id="settTiltWarn" type="number" value="1.5" step="0.1" min="0" style="background:#fff"/>
+                </div>
+                <div style="flex:1">
+                  <label style="font-size:11px;color:#64748B;font-weight:600;display:block;margin-bottom:4px">Critical (m/s²)</label>
+                  <input class="settings-input" id="settTiltCrit" type="number" value="3.0" step="0.1" min="0" style="background:#fff"/>
+                </div>
+              </div>
+              <div style="font-size:9.5px;color:#94A3B8;margin-top:6px">Deviation from gravity (9.81 m/s²). Current: Warning ≥ <span id="curTiltWarnDisplay" style="font-weight:700;color:#D97706">1.5</span> · Critical ≥ <span id="curTiltCritDisplay" style="font-weight:700;color:#DC2626">3.0</span></div>
+            </div>
+            <button onclick="saveThresholds()" style="padding:10px;background:#3B82F6;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='#2563EB'" onmouseout="this.style.background='#3B82F6'">
+              <iconify-icon icon="material-symbols:save-rounded" style="font-size:15px;vertical-align:-3px;margin-right:4px"></iconify-icon>Save All Thresholds
+            </button>
+          </div>
+        </div>
+
+        <!-- GPS & Weather Settings -->
+        <div class="settings-section">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:#EFF6FF">
+              <iconify-icon icon="material-symbols:location-on-rounded" style="color:#3B82F6;font-size:20px"></iconify-icon>
+            </div>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#1E293B">Manual GPS Point & Weather API</div>
+              <div style="font-size:11px;color:#94A3B8">Set fallback location when GPS module has no fix</div>
+            </div>
+          </div>
+          <div class="flex flex-col gap-3">
+            <!-- GPS status -->
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:12px;color:#64748B;font-weight:600">Live GPS Module</span>
+              <span id="settGpsStatus" style="font-size:12px;font-weight:700;color:#F59E0B">No Fix — using manual point</span>
+            </div>
+            <div style="display:flex;gap:10px">
+              <div style="flex:1">
+                <label style="font-size:11px;color:#64748B;font-weight:600;display:block;margin-bottom:4px">📍 Manual Latitude</label>
+                <input class="settings-input" id="settDefLat" type="number" value="13.7563" step="0.0001" placeholder="e.g. 13.7563"/>
+              </div>
+              <div style="flex:1">
+                <label style="font-size:11px;color:#64748B;font-weight:600;display:block;margin-bottom:4px">📍 Manual Longitude</label>
+                <input class="settings-input" id="settDefLon" type="number" value="100.5018" step="0.0001" placeholder="e.g. 100.5018"/>
+              </div>
+            </div>
+            <div style="font-size:10px;color:#94A3B8;background:#F8FAFC;border-radius:8px;padding:8px 10px">
+              ℹ️ This point is used for the weather API when the GPS module has no fix. When GPS fixes, the live GPS coordinates take priority automatically.
+            </div>
+            <div class="flex items-center justify-between">
+              <span style="font-size:12px;color:#64748B;font-weight:600">Auto-refresh weather (5 min)</span>
+              <div class="settings-toggle on" id="weatherRefreshToggle" onclick="this.classList.toggle('on')"></div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button onclick="applyManualGpsPoint()" style="flex:1;padding:10px;background:#6366F1;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='#4F46E5'" onmouseout="this.style.background='#6366F1'">
+                <iconify-icon icon="material-symbols:pin-drop-rounded" style="font-size:15px;vertical-align:-3px;margin-right:4px"></iconify-icon>Apply GPS Point
+              </button>
+              <button onclick="refreshWeatherNow()" style="flex:1;padding:10px;background:#0EA5E9;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='#0284C7'" onmouseout="this.style.background='#0EA5E9'">
+                <iconify-icon icon="material-symbols:cloud-sync-outline-rounded" style="font-size:15px;vertical-align:-3px;margin-right:4px"></iconify-icon>Refresh Weather
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Info -->
+        <div class="settings-section">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:#F3E8FF">
+              <iconify-icon icon="material-symbols:info-outline" style="color:#9333EA;font-size:20px"></iconify-icon>
+            </div>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#1E293B">System Information</div>
+              <div style="font-size:11px;color:#94A3B8">Device and firmware details</div>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2">
+            <div style="background:#F8FAFC;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between">
+              <span style="font-size:12px;color:#64748B">Dashboard Version</span>
+              <span style="font-size:12px;font-weight:600;color:#1E293B">v2.0</span>
+            </div>
+            <div style="background:#F8FAFC;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between">
+              <span style="font-size:12px;color:#64748B">Device</span>
+              <span style="font-size:12px;font-weight:600;color:#1E293B">ESP32 + ADXL345</span>
+            </div>
+            <div style="background:#F8FAFC;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between">
+              <span style="font-size:12px;color:#64748B">GPS Module</span>
+              <span style="font-size:12px;font-weight:600;color:#1E293B">NEO-6M</span>
+            </div>
+            <div style="background:#F8FAFC;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between">
+              <span style="font-size:12px;color:#64748B">Total Records</span>
+              <span style="font-size:12px;font-weight:600;color:#3B82F6" id="settTotalRecords">--</span>
+            </div>
+            <div style="background:#F8FAFC;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between">
+              <span style="font-size:12px;color:#64748B">Last Update</span>
+              <span style="font-size:12px;font-weight:600;color:#1E293B" id="settLastUpdate">--</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- /page-settings -->
+
+  </main>
+</div>
+
+<!-- ── RESET MODAL ── -->
+<div id="resetModal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style="background:#FEE2E2">
+      <iconify-icon icon="material-symbols:warning-outline-rounded" style="color:#EF4444;font-size:32px"></iconify-icon>
+    </div>
+    <h3 style="font-size:18px;font-weight:700;color:#1E293B;text-align:center;margin-bottom:8px">Reset Database</h3>
+    <p style="font-size:14px;color:#64748B;text-align:center;line-height:1.6;margin-bottom:24px">
+      This will permanently delete <strong>all sensor records</strong> from Firebase. This cannot be undone.
+    </p>
+    <div class="flex gap-3">
+      <button onclick="closeModal()" style="flex:1;padding:11px;border-radius:10px;border:1px solid #E2E8F0;background:#fff;font-size:14px;font-weight:600;color:#64748B;cursor:pointer;transition:all 0.15s" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='#fff'">Cancel</button>
+      <button onclick="confirmReset()" style="flex:1;padding:11px;border-radius:10px;border:none;background:#EF4444;font-size:14px;font-weight:600;color:#fff;cursor:pointer;transition:all 0.15s" onmouseover="this.style.background='#DC2626'" onmouseout="this.style.background='#EF4444'">Delete All</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOAST ── -->
+<div id="toast" class="toast-notification">
+  <iconify-icon icon="material-symbols:check-circle-outline-rounded" style="color:#22C55E;font-size:18px" id="toastIcon"></iconify-icon>
+  <span id="toastMsg"></span>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- ── JAVASCRIPT ───────────────────────────────── -->
+<!-- ══════════════════════════════════════════════ -->
+<script>
+// ═══════════════ FIREBASE CONFIG ═══════════════
+const FIREBASE_URL = 'https://landslide-ews-12015-default-rtdb.asia-southeast1.firebasedatabase.app';
+firebase.initializeApp({ databaseURL: FIREBASE_URL });
+const db = firebase.database();
+const sensorsRef = db.ref('sensors');
+const weatherRef = db.ref('weather');
+let lastWeatherData = null;
+
+// ═══════════════ DYNAMIC THRESHOLDS ═══════════════
+let SOIL_WARN = 65, SOIL_CRIT = 80, TILT_WARN = 1.5, TILT_CRIT = 3.0;
+
+// ═══════════════ DATA STORES ═══════════════
+let allRows = [];
+let filteredRows = [];
+let historyRows = [];
+let currentPage = 1;
+const perPage = 10;
+let historyPage = 1;
+const historyPerPage = 15;
+let historyFilter = 'all';
+const MAX_CHART_POINTS = 30;
+let chartLabels = [], chartSoil1 = [], chartSoil2 = [], chartSoil3 = [], chartSoilAvg = [];
+let chartAx = [], chartAy = [], chartAz = [];
+let lastDataTimestamp = 0;
+let gpsLat = 0, gpsLon = 0, gpsHasFix = false;
+let weatherFetched = false;
+
+// Maps
+let map = null, marker = null;
+let liveMap = null, liveMarker = null;
+
+// ═══════════════ CLOCK ═══════════════
+function updateClock() {
+  document.getElementById('datetimeDisplay').textContent =
+    new Date().toLocaleString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}
+updateClock(); setInterval(updateClock, 1000);
+
+// ═══════════════ FIREBASE KEY → REAL TIMESTAMP ═══════════════
+// Firebase push keys encode time in the first 8 chars (base64 of ms timestamp)
+function pushKeyToDate(key) {
+  try {
+    const PUSH_CHARS = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz';
+    let now = 0;
+    for (let i = 0; i < 8; i++) {
+      now = now * 64 + PUSH_CHARS.indexOf(key[i]);
+    }
+    const d = new Date(now);
+    if (isNaN(d.getTime()) || d.getFullYear() < 2020) return key.slice(-8);
+    return d.toLocaleString('en-GB', {
+      day:'2-digit', month:'short', year:'numeric',
+      hour:'2-digit', minute:'2-digit', second:'2-digit'
+    });
+  } catch (e) {
+    return key.slice(-8);
+  }
+}
+
+// ═══════════════ WEATHER API ═══════════════
+function fetchWeather(lat, lon) {
+  if (!lat || !lon || (lat === 0 && lon === 0)) {
+    // Use default location (Bangkok) if no GPS
+    lat = parseFloat(document.getElementById('settDefLat')?.value || '13.7563');
+    lon = parseFloat(document.getElementById('settDefLon')?.value || '100.5018');
+  }
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=rain,wind_speed_10m,wind_direction_10m,relative_humidity_2m,temperature_2m&timezone=auto`;
+  console.log('🌤 Fetching weather:', url);
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.current) {
+        console.error('No current weather data in Open-Meteo response:', data);
+        showToast('⚠️ Weather API returned no data — check network/coords', 'warning');
+        return;
+      }
+      const c = data.current;
+      const weatherData = {
+        temperature: c.temperature_2m ?? 0,
+        humidity: c.relative_humidity_2m ?? 0,
+        rain: c.rain ?? 0,
+        wind_speed: c.wind_speed_10m ?? 0,
+        wind_direction: c.wind_direction_10m ?? 0,
+        lat, lon,
+        updated_at: new Date().toISOString()
+      };
+      weatherRef.set(weatherData).catch(err => console.error('Weather save error:', err));
+      applyWeatherToUI(weatherData);
+    })
+    .catch(err => {
+      console.error('Weather fetch error:', err);
+      document.getElementById('weatherDot').style.background = '#EF4444';
+      document.getElementById('weatherStatusText').textContent = 'Error';
+      document.getElementById('weatherStatusText').style.color = '#EF4444';
+    });
+}
+
+function applyWeatherToUI(w) {
+  lastWeatherData = w;
+  const temp = parseFloat(w.temperature) || 0;
+  const hum  = parseFloat(w.humidity)    || 0;
+  const rain = parseFloat(w.rain)        || 0;
+  const wind = parseFloat(w.wind_speed)  || 0;
+  const wdir = parseFloat(w.wind_direction) || 0;
+
+  document.getElementById('wTemp').textContent = temp.toFixed(1);
+  document.getElementById('wTempSt').textContent = temp > 35 ? 'Very Hot' : temp > 28 ? 'Hot' : temp > 20 ? 'Warm' : temp > 10 ? 'Cool' : 'Cold';
+
+  document.getElementById('wHum').textContent = Math.round(hum);
+  document.getElementById('wHumSt').textContent = hum > 80 ? 'Very Humid' : hum > 60 ? 'Humid' : hum > 40 ? 'Comfortable' : 'Dry';
+
+  document.getElementById('wRain').textContent = rain.toFixed(1);
+  document.getElementById('wRainSt').textContent = rain > 10 ? 'Heavy Rain' : rain > 2 ? 'Moderate' : rain > 0 ? 'Light Rain' : 'No Rain';
+
+  document.getElementById('wWind').textContent = wind.toFixed(1);
+  const dir = degToDir(wdir);
+  document.getElementById('wWindDir').textContent = dir + ' wind';
+  document.getElementById('wWindDeg').textContent = Math.round(wdir);
+  document.getElementById('wWindLabel').textContent = dir;
+
+  document.getElementById('weatherDot').style.background = '#22C55E';
+  document.getElementById('weatherStatusText').textContent = 'Active';
+  document.getElementById('weatherStatusText').style.color = '#22C55E';
+  weatherFetched = true;
+}
+
+function degToDir(d) {
+  return ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(d / 22.5) % 16];
+}
+
+// Listen for weather from Firebase
+weatherRef.on('value', snap => {
+  const w = snap.val();
+  if (w && w.temperature !== undefined) {
+    applyWeatherToUI(w);
+  }
+});
+
+// Fetch weather immediately on load (no waiting)
+function startWeather(lat, lon) {
+  fetchWeather(lat, lon);
+  if (window._weatherInterval) clearInterval(window._weatherInterval);
+  window._weatherInterval = setInterval(() => fetchWeather(lat, lon), 5 * 60 * 1000);
+}
+
+// Start weather immediately with default location
+setTimeout(() => {
+  if (!weatherFetched) {
+    // Try browser geolocation first
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => startWeather(pos.coords.latitude, pos.coords.longitude),
+        () => startWeather(0, 0) // falls back to default
+      );
+    } else {
+      startWeather(0, 0);
+    }
+  }
+}, 500);
+
+function refreshWeatherNow() {
+  const lat = gpsHasFix ? gpsLat : parseFloat(document.getElementById('settDefLat')?.value || '13.7563');
+  const lon = gpsHasFix ? gpsLon : parseFloat(document.getElementById('settDefLon')?.value || '100.5018');
+  weatherFetched = false;
+  startWeather(lat, lon);
+  showToast('🌤 Refreshing weather data...');
+}
+
+// ═══════════════ GPS MAP ═══════════════
+const DEFAULT_LAT = 13.7563, DEFAULT_LON = 100.5018;
+
+function initMap(lat, lon) {
+  if (map) {
+    map.setView([lat, lon], 15);
+    updateMarker(lat, lon);
+    return;
+  }
+  document.getElementById('gpsMap').innerHTML = '';
+  map = L.map('gpsMap', { zoomControl: false, attributionControl: true }).setView([lat, lon], lat === DEFAULT_LAT ? 10 : 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '© OpenStreetMap'
+  }).addTo(map);
+  L.control.zoom({ position: 'topright' }).addTo(map);
+  marker = L.marker([lat, lon]).addTo(map).bindPopup('<b>Sensor Location</b><br/>Landslide Monitoring Node');
+  setTimeout(() => map.invalidateSize(), 100);
+}
+
+function initLiveMap(lat, lon) {
+  if (liveMap) {
+    liveMap.setView([lat, lon], 15);
+    if (liveMarker) liveMarker.setLatLng([lat, lon]);
+    else liveMarker = L.marker([lat, lon]).addTo(liveMap).bindPopup('<b>Sensor Location</b>');
+    return;
+  }
+  document.getElementById('liveGpsMap').innerHTML = '';
+  liveMap = L.map('liveGpsMap', { zoomControl: false }).setView([lat, lon], lat === DEFAULT_LAT ? 10 : 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '© OpenStreetMap'
+  }).addTo(liveMap);
+  liveMarker = L.marker([lat, lon]).addTo(liveMap).bindPopup('<b>Sensor</b>');
+  setTimeout(() => liveMap.invalidateSize(), 100);
+}
+
+function updateMarker(lat, lon) {
+  if (marker) marker.setLatLng([lat, lon]);
+  else if (map) marker = L.marker([lat, lon]).addTo(map).bindPopup('<b>Sensor Location</b>');
+}
+
+// ═══════════════ CHARTS ═══════════════
+let moistureChart, accelChart, liveMoistureChart;
+
+function initCharts() {
+  // ── Dashboard Soil Moisture Chart (3 sensors + avg) ──
+  moistureChart = echarts.init(document.getElementById('moistureChart'));
+  moistureChart.setOption({
+    grid: { top: 14, right: 14, bottom: 28, left: 40 },
+    xAxis: {
+      type: 'category', data: [],
+      axisLine: { lineStyle: { color: '#F1F5F9' } },
+      axisTick: { show: false },
+      axisLabel: { color: '#94A3B8', fontSize: 9, rotate: 30 }
+    },
+    yAxis: {
+      type: 'value', min: 0, max: 100,
+      axisLine: { show: false }, axisTick: { show: false },
+      splitLine: { lineStyle: { color: '#F8FAFC', type: 'dashed' } },
+      axisLabel: { color: '#94A3B8', fontSize: 10, formatter: '{value}%' }
+    },
+    series: [
+      {
+        name: 'Sensor 1', type: 'line', data: [], smooth: true, symbol: 'none',
+        lineStyle: { color: '#22C55E', width: 2 },
+        itemStyle: { color: '#22C55E' }
+      },
+      {
+        name: 'Sensor 2', type: 'line', data: [], smooth: true, symbol: 'none',
+        lineStyle: { color: '#3B82F6', width: 2 },
+        itemStyle: { color: '#3B82F6' }
+      },
+      {
+        name: 'Sensor 3', type: 'line', data: [], smooth: true, symbol: 'none',
+        lineStyle: { color: '#F59E0B', width: 2 },
+        itemStyle: { color: '#F59E0B' }
+      },
+      {
+        name: 'Average', type: 'line', data: [], smooth: true, symbol: 'circle', symbolSize: 4,
+        lineStyle: { color: '#EF4444', width: 2.5, type: 'dashed' },
+        itemStyle: { color: '#EF4444', borderWidth: 2, borderColor: '#fff' },
+        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(239,68,68,0.08)' }, { offset: 1, color: 'rgba(239,68,68,0)' }] } },
+        markLine: {
+          silent: true,
+          data: [{ yAxis: 80, name: 'Critical' }],
+          lineStyle: { color: '#EF4444', type: 'solid', width: 1.5, opacity: 0.5 },
+          label: { formatter: 'Critical 80%', color: '#EF4444', fontSize: 9 }
+        }
+      }
+    ],
+    tooltip: {
+      trigger: 'axis', backgroundColor: '#1E293B', borderColor: '#1E293B',
+      borderRadius: 10, padding: [6, 12],
+      textStyle: { color: '#fff', fontSize: 11 },
+      formatter: params => {
+        let s = params[0]?.axisValue + '<br/>';
+        params.forEach(p => { s += `${p.marker}${p.seriesName}: <b>${p.value}%</b><br/>`; });
+        return s;
+      }
+    },
+    animationDuration: 600
+  });
+
+  // ── Dashboard Accelerometer Chart ──
+  accelChart = echarts.init(document.getElementById('accelChart'));
+  accelChart.setOption({
+    grid: { top: 12, right: 12, bottom: 24, left: 42 },
+    xAxis: {
+      type: 'category', data: [],
+      axisLine: { lineStyle: { color: '#F1F5F9' } }, axisTick: { show: false },
+      axisLabel: { color: '#94A3B8', fontSize: 9, rotate: 30 }
+    },
+    yAxis: {
+      type: 'value',
+      axisLine: { show: false }, axisTick: { show: false },
+      splitLine: { lineStyle: { color: '#F8FAFC', type: 'dashed' } },
+      axisLabel: { color: '#94A3B8', fontSize: 10 }
+    },
+    series: [
+      { name: 'X', type: 'line', data: [], smooth: true, symbol: 'none', lineStyle: { color: '#3B82F6', width: 2 }, itemStyle: { color: '#3B82F6' } },
+      { name: 'Y', type: 'line', data: [], smooth: true, symbol: 'none', lineStyle: { color: '#22C55E', width: 2 }, itemStyle: { color: '#22C55E' } },
+      { name: 'Z', type: 'line', data: [], smooth: true, symbol: 'none', lineStyle: { color: '#F59E0B', width: 2 }, itemStyle: { color: '#F59E0B' } }
+    ],
+    tooltip: {
+      trigger: 'axis', backgroundColor: '#1E293B', borderColor: '#1E293B',
+      borderRadius: 10, padding: [6, 12], textStyle: { color: '#fff', fontSize: 11 },
+      formatter: params => {
+        let s = params[0]?.axisValue + '<br/>';
+        params.forEach(p => { s += `${p.marker}${p.seriesName}: <b>${p.value} m/s²</b><br/>`; });
+        return s;
+      }
+    },
+    animationDuration: 600
+  });
+
+  // ── Live Page Moisture Chart ──
+  liveMoistureChart = echarts.init(document.getElementById('liveMoistureChart'));
+  liveMoistureChart.setOption({
+    grid: { top: 16, right: 16, bottom: 30, left: 44 },
+    xAxis: {
+      type: 'category', data: [],
+      axisLine: { lineStyle: { color: '#F1F5F9' } }, axisTick: { show: false },
+      axisLabel: { color: '#94A3B8', fontSize: 9, rotate: 30 }
+    },
+    yAxis: {
+      type: 'value', min: 0, max: 100,
+      axisLine: { show: false }, axisTick: { show: false },
+      splitLine: { lineStyle: { color: '#F8FAFC', type: 'dashed' } },
+      axisLabel: { color: '#94A3B8', fontSize: 10, formatter: '{value}%' }
+    },
+    series: [
+      { name: 'Sensor 1', type: 'line', data: [], smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { color: '#22C55E', width: 2.5 }, itemStyle: { color: '#22C55E', borderWidth: 2, borderColor: '#fff' }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(34,197,94,0.15)' }, { offset: 1, color: 'rgba(34,197,94,0)' }] } } },
+      { name: 'Sensor 2', type: 'line', data: [], smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { color: '#3B82F6', width: 2.5 }, itemStyle: { color: '#3B82F6', borderWidth: 2, borderColor: '#fff' }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(59,130,246,0.12)' }, { offset: 1, color: 'rgba(59,130,246,0)' }] } } },
+      { name: 'Sensor 3', type: 'line', data: [], smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { color: '#F59E0B', width: 2.5 }, itemStyle: { color: '#F59E0B', borderWidth: 2, borderColor: '#fff' }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(245,158,11,0.12)' }, { offset: 1, color: 'rgba(245,158,11,0)' }] } } },
+      {
+        name: 'Average', type: 'line', data: [], smooth: true, symbol: 'none',
+        lineStyle: { color: '#EF4444', width: 3, type: 'dashed' }, itemStyle: { color: '#EF4444' },
+        markLine: { silent: true, data: [{ yAxis: 80, name: 'Critical 80%' }], lineStyle: { color: '#EF4444', type: 'solid', width: 2, opacity: 0.5 }, label: { formatter: 'Critical: 80%', color: '#EF4444', fontSize: 10 } }
+      }
+    ],
+    tooltip: {
+      trigger: 'axis', backgroundColor: '#1E293B', borderColor: '#1E293B',
+      borderRadius: 10, padding: [8, 14], textStyle: { color: '#fff', fontSize: 11 },
+      formatter: params => {
+        let s = `<b>${params[0]?.axisValue}</b><br/>`;
+        params.forEach(p => { s += `${p.marker}${p.seriesName}: <b>${p.value}%</b><br/>`; });
+        return s;
+      }
+    },
+    animationDuration: 600
+  });
+
+  window.addEventListener('resize', () => {
+    moistureChart?.resize();
+    accelChart?.resize();
+    liveMoistureChart?.resize();
+    map?.invalidateSize();
+    liveMap?.invalidateSize();
+  });
+}
+
+function updateCharts() {
+  moistureChart?.setOption({
+    xAxis: { data: [...chartLabels] },
+    series: [
+      { data: [...chartSoil1] },
+      { data: [...chartSoil2] },
+      { data: [...chartSoil3] },
+      { data: [...chartSoilAvg] }
+    ]
+  });
+  accelChart?.setOption({
+    xAxis: { data: [...chartLabels] },
+    series: [{ data: [...chartAx] }, { data: [...chartAy] }, { data: [...chartAz] }]
+  });
+  liveMoistureChart?.setOption({
+    xAxis: { data: [...chartLabels] },
+    series: [
+      { data: [...chartSoil1] },
+      { data: [...chartSoil2] },
+      { data: [...chartSoil3] },
+      { data: [...chartSoilAvg] }
+    ]
+  });
+}
+
+// ═══════════════ FIELD RESOLVER ═══════════════
+// Handles both camelCase (accelX) and lowercase (accel_x) or other variants
+function getField(d, ...names) {
+  for (const n of names) {
+    if (d[n] !== undefined && d[n] !== null) return d[n];
+  }
+  return 0;
+}
+
+// ═══════════════ SOIL MOISTURE RESOLVER ═══════════════
+// Your Firebase schema (firebase-rules.json) only guarantees a single
+// averaged field called "soil_moisture". If your ESP32 firmware is also
+// pushing 3 individual sensor readings, list every possible field name
+// variant you use below (e.g. 'moisture1','soil_1','soilSensor1', etc.)
+// and they will be picked up automatically.
+let _loggedRawSample = false;
+function getMoistureValues(d) {
+  const m1raw = getField(d, 'moisture1', 'soil1', 'sensor1', 'soil_1', 'moisture_1', 'soilSensor1', 'm1');
+  const m2raw = getField(d, 'moisture2', 'soil2', 'sensor2', 'soil_2', 'moisture_2', 'soilSensor2', 'm2');
+  const m3raw = getField(d, 'moisture3', 'soil3', 'sensor3', 'soil_3', 'moisture_3', 'soilSensor3', 'm3');
+  const hasIndividual = (m1raw !== 0 || m2raw !== 0 || m3raw !== 0);
+
+  if (hasIndividual) {
+    const m1 = parseFloat(m1raw) || 0, m2 = parseFloat(m2raw) || 0, m3 = parseFloat(m3raw) || 0;
+    return { m1, m2, m3, avg: Math.round((m1 + m2 + m3) / 3), individual: true };
+  }
+
+  // Fallback: only a single averaged value exists in Firebase (soil_moisture).
+  // Show it on all 3 lines so the chart/table don't render as 0/blank —
+  // but flag it so it's obvious this is the fallback path, not real per-sensor data.
+  const avgOnly = parseFloat(getField(d, 'soil_moisture', 'soilMoisture', 'soil_avg', 'soilAvg')) || 0;
+  if (!_loggedRawSample && avgOnly > 0) {
+    console.warn('⚠️ No individual moisture1/2/3 fields found in Firebase — only "soil_moisture" (single average) is present. Showing that value on all 3 sensor lines. If you have 3 physical sensors, update your ESP32 code to push moisture1/moisture2/moisture3 too.');
+  }
+  return { m1: avgOnly, m2: avgOnly, m3: avgOnly, avg: Math.round(avgOnly), individual: false };
+}
+
+// ═══════════════ DASHBOARD UPDATE ═══════════════
+function updateDashboard(d) {
+  const circ = 2 * Math.PI * 28;
+
+  // Soil moisture - 3 sensors (falls back to single averaged soil_moisture field if needed)
+  const { m1, m2, m3, avg: sm } = getMoistureValues(d);
+
+  document.getElementById('soilVal').innerHTML = sm + '<span style="font-size:14px;color:#94A3B8">%</span>';
+  document.getElementById('soilRingText').textContent = sm + '%';
+  document.getElementById('soilRing').setAttribute('stroke-dashoffset', circ * (1 - sm / 100));
+  document.getElementById('soilBar').style.width = sm + '%';
+
+  // Individual sensor mini bars
+  document.getElementById('s1Bar').style.width = m1 + '%';
+  document.getElementById('s1Val').textContent = m1 + '%';
+  document.getElementById('s2Bar').style.width = m2 + '%';
+  document.getElementById('s2Val').textContent = m2 + '%';
+  document.getElementById('s3Bar').style.width = m3 + '%';
+  document.getElementById('s3Val').textContent = m3 + '%';
+
+  const sSt = sm > SOIL_CRIT ? 'Critical' : sm > SOIL_WARN ? 'Wet' : sm > 30 ? 'Normal' : 'Dry';
+  const sEl = document.getElementById('soilStatus');
+  sEl.textContent = sSt;
+  sEl.className = 'tag ' + (sm > SOIL_CRIT ? 'tag-danger' : sm > SOIL_WARN ? 'tag-warning' : 'tag-safe');
+  const ringColor = sm > SOIL_CRIT ? '#EF4444' : sm > SOIL_WARN ? '#F59E0B' : '#22C55E';
+  document.getElementById('soilRing').setAttribute('stroke', ringColor);
+  document.getElementById('soilBar').style.background = `linear-gradient(90deg, ${ringColor}, ${ringColor}dd)`;
+
+  // Average display with critical tag
+  document.getElementById('soilAvgDisplay').textContent = sm + '%';
+  const critTag = document.getElementById('soilCriticalTag');
+  if (sm >= SOIL_CRIT) {
+    critTag.textContent = 'CRITICAL'; critTag.style.background = '#FEE2E2'; critTag.style.color = '#DC2626';
+  } else if (sm >= SOIL_WARN) {
+    critTag.textContent = 'WARNING'; critTag.style.background = '#FEF3C7'; critTag.style.color = '#D97706';
+  } else {
+    critTag.textContent = 'SAFE'; critTag.style.background = '#DCFCE7'; critTag.style.color = '#16A34A';
+  }
+
+  // Accelerometer — try multiple field name variants
+  const ax = parseFloat(getField(d, 'accelX', 'accel_x', 'AccelX', 'ax', 'x')) || 0;
+  const ay = parseFloat(getField(d, 'accelY', 'accel_y', 'AccelY', 'ay', 'y')) || 0;
+  const az = parseFloat(getField(d, 'accelZ', 'accel_z', 'AccelZ', 'az', 'z')) || 0;
+  document.getElementById('axisX').textContent = ax.toFixed(2) + ' m/s²';
+  document.getElementById('axisY').textContent = ay.toFixed(2) + ' m/s²';
+  document.getElementById('axisZ').textContent = az.toFixed(2) + ' m/s²';
+  document.getElementById('barX').style.width = Math.min(100, (Math.abs(ax) / 12) * 100) + '%';
+  document.getElementById('barY').style.width = Math.min(100, (Math.abs(ay) / 12) * 100) + '%';
+  document.getElementById('barZ').style.width = Math.min(100, (Math.abs(az) / 12) * 100) + '%';
+  const mag = Math.sqrt(ax * ax + ay * ay + az * az);
+  document.getElementById('accelMag').textContent = mag.toFixed(2) + ' m/s²';
+
+  const tiltDev = Math.abs(mag - 9.81);
+  const tilt = tiltDev > TILT_CRIT ? 'Critical' : tiltDev > TILT_WARN ? 'Warning' : 'Stable';
+  const tEl = document.getElementById('tiltStatus');
+  tEl.textContent = tilt;
+  tEl.className = 'tag ' + (tilt === 'Critical' ? 'tag-danger' : tilt === 'Warning' ? 'tag-warning' : 'tag-safe');
+
+  // Update Live Monitoring page values
+  updateLivePage(m1, m2, m3, sm, ax, ay, az, mag, tiltDev, tilt);
+
+  // GPS — try multiple field names
+  const lat = parseFloat(getField(d, 'lat', 'latitude', 'Lat', 'Latitude', 'gpsLat')) || 0;
+  const lon = parseFloat(getField(d, 'lng', 'lon', 'longitude', 'Lon', 'Long', 'Longitude', 'gpsLon', 'gpsLng')) || 0;
+  const fix = !!(d.gpsFixed || d.gps_fixed || d.fix || d.gps_fix || (lat && lon));
+  const sats = parseInt(getField(d, 'satellites', 'sats', 'Satellites', 'numSats', 'satCount')) || 0;
+
+  document.getElementById('gpsLat').textContent = lat !== 0 ? lat.toFixed(6) : '--';
+  document.getElementById('gpsLon').textContent = lon !== 0 ? lon.toFixed(6) : '--';
+  document.getElementById('gpsSat').textContent = sats;
+  document.getElementById('gpsBadgeText').textContent = sats + ' sats';
+
+  // Live page GPS
+  document.getElementById('liveGpsLat').textContent = lat !== 0 ? lat.toFixed(6) : '--';
+  document.getElementById('liveGpsLon').textContent = lon !== 0 ? lon.toFixed(6) : '--';
+  document.getElementById('liveGpsSat').textContent = sats;
+
+  const fixTag = document.getElementById('gpsFixTag');
+  const gpsDotEl = document.getElementById('gpsDot');
+  const gpsFixSb = document.getElementById('gpsFixSidebar');
+  const gpsIconBg = document.getElementById('gpsIconBg');
+  const gpsIconEl = document.getElementById('gpsIconEl');
+  const liveGpsTag = document.getElementById('liveGpsTag');
+  const liveGpsIconBg = document.getElementById('liveGpsIconBg');
+
+  if (fix && lat !== 0 && lon !== 0) {
+    fixTag.textContent = 'Fix OK'; fixTag.className = 'tag tag-safe';
+    gpsDotEl.style.background = '#22C55E'; gpsDotEl.classList.add('pulse');
+    gpsFixSb.textContent = 'Fix OK'; gpsFixSb.style.color = '#22C55E';
+    gpsIconBg.style.background = '#DCFCE7'; gpsIconEl.style.color = '#22C55E';
+    liveGpsTag.textContent = 'Fix OK'; liveGpsTag.className = 'tag tag-safe';
+    liveGpsIconBg.style.background = 'linear-gradient(135deg,#22C55E,#16A34A)';
+    document.getElementById('gpsNote').textContent = 'Weather location from GPS module';
+    document.getElementById('mapSubtitle').textContent = `${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E`;
+    document.getElementById('gpsBadgeSmall').style.background = '#DCFCE7';
+    document.getElementById('gpsBadgeSmall').style.borderColor = '#BBF7D0';
+    document.getElementById('gpsBadgeSmall').querySelector('iconify-icon').style.color = '#16A34A';
+    document.getElementById('gpsBadgeText').style.color = '#16A34A';
+    // Update settings GPS status panel
+    const settGpsSt = document.getElementById('settGpsStatus');
+    if (settGpsSt) { settGpsSt.textContent = `Fix OK — ${lat.toFixed(4)}, ${lon.toFixed(4)}`; settGpsSt.style.color = '#22C55E'; }
+
+    initMap(lat, lon);
+    initLiveMap(lat, lon);
+
+    if (!gpsHasFix || gpsLat !== lat || gpsLon !== lon) {
+      gpsLat = lat; gpsLon = lon; gpsHasFix = true;
+      startWeather(lat, lon);
+    }
+  } else {
+    fixTag.textContent = 'No Fix'; fixTag.className = 'tag tag-warning';
+    gpsDotEl.style.background = '#F59E0B'; gpsDotEl.classList.remove('pulse');
+    gpsFixSb.textContent = 'No Fix'; gpsFixSb.style.color = '#F59E0B';
+    gpsIconBg.style.background = '#FEF3C7'; gpsIconEl.style.color = '#D97706';
+    liveGpsTag.textContent = 'No Fix'; liveGpsTag.className = 'tag tag-warning';
+    liveGpsIconBg.style.background = 'linear-gradient(135deg,#F59E0B,#D97706)';
+    document.getElementById('gpsNote').textContent = 'Weather uses manual/browser location until GPS fix';
+    document.getElementById('mapSubtitle').textContent = 'Waiting for GPS fix...';
+    // Update settings GPS status panel
+    const settGpsSt = document.getElementById('settGpsStatus');
+    if (settGpsSt) { settGpsSt.textContent = 'No Fix — using manual point'; settGpsSt.style.color = '#F59E0B'; }
+  }
+
+  // Weight sensor
+  const wt = parseFloat(getField(d, 'weight', 'Weight', 'load')) || 0;
+  const wtMax = 2000;
+  const wtPct = Math.min(100, Math.round((wt / wtMax) * 100));
+  const wtRingOffset = 175.9 * (1 - wtPct / 100);
+  document.getElementById('weightVal').innerHTML = wt + '<span style="font-size:13px;color:#94A3B8"> g</span>';
+  document.getElementById('weightRingText').textContent = wt;
+  document.getElementById('weightRing').setAttribute('stroke-dashoffset', wtRingOffset);
+  document.getElementById('weightBar').style.width = wtPct + '%';
+  document.getElementById('weightPct').textContent = wtPct + '%';
+  const wtColor = wt > 1500 ? '#EF4444' : wt > 800 ? '#F59E0B' : '#9333EA';
+  const wtLabel = wt > 1500 ? 'Heavy' : wt > 800 ? 'Normal' : 'Light';
+  document.getElementById('weightRing').setAttribute('stroke', wtColor);
+  document.getElementById('weightBar').style.background = `linear-gradient(90deg,${wtColor},${wtColor}cc)`;
+  document.getElementById('weightPct').style.color = wtColor;
+  const wtSt = document.getElementById('weightStatus');
+  wtSt.textContent = wtLabel;
+  wtSt.style.background = wt > 1500 ? '#FEE2E2' : wt > 800 ? '#FEF3C7' : '#F3E8FF';
+  wtSt.style.color = wt > 1500 ? '#DC2626' : wt > 800 ? '#D97706' : '#7E22CE';
+
+  // Uptime
+  const ut = parseInt(getField(d, 'uptime_s', 'uptime', 'Uptime')) || 0;
+  const uh = Math.floor(ut / 3600), um = Math.floor((ut % 3600) / 60), us = ut % 60;
+  document.getElementById('uptimeVal').textContent = 'Uptime: ' + (uh > 0 ? uh + 'h ' : '') + um + 'm ' + us + 's';
+
+  // Overall Risk
+  const risk = (sm > SOIL_CRIT || tilt === 'Critical') ? 'DANGER' : (sm > SOIL_WARN || tilt === 'Warning') ? 'WARNING' : 'SAFE';
+  const rb = document.getElementById('riskBadge');
+  rb.textContent = risk;
+  rb.style.background = risk === 'DANGER' ? '#FEE2E2' : risk === 'WARNING' ? '#FEF3C7' : '#DCFCE7';
+  rb.style.color = risk === 'DANGER' ? '#DC2626' : risk === 'WARNING' ? '#D97706' : '#16A34A';
+  const rI = document.getElementById('riskIcon'), rII = document.getElementById('riskIconInner');
+  if (risk === 'DANGER') { rI.style.background = '#FEE2E2'; rII.style.color = '#EF4444'; rII.setAttribute('icon', 'material-symbols:dangerous-outline-rounded'); }
+  else if (risk === 'WARNING') { rI.style.background = '#FEF3C7'; rII.style.color = '#F59E0B'; rII.setAttribute('icon', 'material-symbols:warning-outline-rounded'); }
+  else { rI.style.background = '#DCFCE7'; rII.style.color = '#22C55E'; rII.setAttribute('icon', 'material-symbols:shield-with-heart-outline-rounded'); }
+
+  // Settings info
+  if (document.getElementById('settLastUpdate')) {
+    document.getElementById('settLastUpdate').textContent = new Date().toLocaleTimeString();
+  }
+}
+
+function updateLivePage(m1, m2, m3, sm, ax, ay, az, mag, tiltDev, tilt) {
+  // Soil
+  document.getElementById('liveS1').textContent = m1 + '%';
+  document.getElementById('liveS1Bar').style.width = m1 + '%';
+  document.getElementById('liveS2').textContent = m2 + '%';
+  document.getElementById('liveS2Bar').style.width = m2 + '%';
+  document.getElementById('liveS3').textContent = m3 + '%';
+  document.getElementById('liveS3Bar').style.width = m3 + '%';
+  document.getElementById('liveSoilAvgText').textContent = sm;
+
+  // Soil ring
+  const liveSoilRing = document.getElementById('liveSoilRing');
+  if (liveSoilRing) {
+    liveSoilRing.setAttribute('stroke-dashoffset', 351.9 * (1 - sm / 100));
+    const c = sm > SOIL_CRIT ? '#EF4444' : sm > SOIL_WARN ? '#F59E0B' : '#22C55E';
+    liveSoilRing.setAttribute('stroke', c);
+  }
+  const liveSoilSt = sm > SOIL_CRIT ? 'Critical' : sm > SOIL_WARN ? 'Wet' : sm > 30 ? 'Normal' : 'Dry';
+  document.getElementById('liveSoilStatus').textContent = liveSoilSt;
+  document.getElementById('liveSoilStatus').className = 'tag ml-auto ' + (sm > SOIL_CRIT ? 'tag-danger' : sm > SOIL_WARN ? 'tag-warning' : 'tag-safe');
+  document.getElementById('liveCritical').textContent = sm >= SOIL_CRIT ? '⚠ CRITICAL!' : sm >= SOIL_WARN ? 'WARNING' : 'OK';
+  document.getElementById('liveCritical').style.color = sm >= SOIL_CRIT ? '#EF4444' : sm >= SOIL_WARN ? '#F59E0B' : '#22C55E';
+
+  // Accelerometer
+  document.getElementById('liveAxX').textContent = ax.toFixed(2);
+  document.getElementById('liveAxY').textContent = ay.toFixed(2);
+  document.getElementById('liveAxZ').textContent = az.toFixed(2);
+  document.getElementById('liveAccelMag').textContent = mag.toFixed(2) + ' m/s²';
+  document.getElementById('liveMagBar').style.width = Math.min(100, (mag / 20) * 100) + '%';
+  document.getElementById('liveTiltDev').textContent = tiltDev.toFixed(2) + ' m/s²';
+  document.getElementById('liveTiltStatus').textContent = tilt;
+  document.getElementById('liveTiltStatus').className = 'tag ml-auto ' + (tilt === 'Critical' ? 'tag-danger' : tilt === 'Warning' ? 'tag-warning' : 'tag-safe');
+}
+
+// ═══════════════ FIREBASE LISTENER ═══════════════
+function computeRisk(d) {
+  const { avg: sm } = getMoistureValues(d);
+  const ax = parseFloat(getField(d, 'accelX', 'accel_x', 'AccelX', 'Accel_X', 'ax', 'x')) || 0;
+  const ay = parseFloat(getField(d, 'accelY', 'accel_y', 'AccelY', 'Accel_Y', 'ay', 'y')) || 0;
+  const az = parseFloat(getField(d, 'accelZ', 'accel_z', 'AccelZ', 'Accel_Z', 'az', 'z')) || 0;
+  const mag = Math.sqrt(ax * ax + ay * ay + az * az);
+  const tiltDev = Math.abs(mag - 9.81);
+  return (sm > SOIL_CRIT || tiltDev > TILT_CRIT) ? 'Danger' : (sm > SOIL_WARN || tiltDev > TILT_WARN) ? 'Warning' : 'Safe';
+}
+
+function formatUptime(s) {
+  s = parseInt(s) || 0;
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return (h > 0 ? h + 'h ' : '') + m + 'm ' + (s % 60) + 's';
+}
+
+function initFirebase() {
+  console.log('🔥 Connecting to Firebase → /sensors ...');
+  sensorsRef.orderByKey().on('value', snap => {
+    const val = snap.val();
+    if (!val) {
+      allRows = []; filteredRows = []; historyRows = [];
+      renderTable(); renderHistoryTable();
+      document.getElementById('recordCountBadge').textContent = '0 records';
+      return;
+    }
+
+    allRows = [];
+    chartLabels.length = 0;
+    chartSoil1.length = 0; chartSoil2.length = 0; chartSoil3.length = 0; chartSoilAvg.length = 0;
+    chartAx.length = 0; chartAy.length = 0; chartAz.length = 0;
+
+    let _sampleLogged = false;
+    Object.entries(val).forEach(([key, d]) => {
+      if (!_sampleLogged) {
+        // One-time debug dump so you can see exactly what field names your
+        // ESP32 → PHP bridge → Firebase pipeline is actually writing.
+        console.log('📦 Sample raw /sensors record (use this to confirm field names):', d);
+        _sampleLogged = true;
+      }
+      const risk = computeRisk(d);
+      const { m1, m2, m3, avg: sm } = getMoistureValues(d);
+      const realTs = pushKeyToDate(key);
+
+      allRows.push({
+        key,
+        ts: realTs,
+        soil_moisture: sm,
+        moisture1: m1,
+        moisture2: m2,
+        moisture3: m3,
+        accel_x: parseFloat(getField(d, 'accelX', 'accel_x', 'AccelX', 'Accel_X', 'ax', 'x')) || 0,
+        accel_y: parseFloat(getField(d, 'accelY', 'accel_y', 'AccelY', 'Accel_Y', 'ay', 'y')) || 0,
+        accel_z: parseFloat(getField(d, 'accelZ', 'accel_z', 'AccelZ', 'Accel_Z', 'az', 'z')) || 0,
+        gps_fix: !!(d.gpsFixed || d.gps_fixed || d.fix || d.gps_fix || (getField(d,'lat','latitude','Lat','Latitude') && getField(d,'lng','lon','longitude','Lon','Longitude'))),
+        lat: parseFloat(getField(d, 'lat', 'latitude', 'Lat', 'Latitude', 'gpsLat')) || 0,
+        lon: parseFloat(getField(d, 'lng', 'lon', 'longitude', 'Lon', 'Long', 'Longitude', 'gpsLon', 'gpsLng')) || 0,
+        weight: parseFloat(getField(d, 'weight', 'Weight')) || 0,
+        satellites: parseInt(getField(d, 'satellites', 'sats', 'Satellites', 'numSats', 'satCount')) || 0,
+        uptime_s: parseInt(getField(d, 'uptime_s', 'uptime', 'Uptime')) || 0,
+        risk
+      });
+    });
+
+    // Sort newest first
+    allRows.sort((a, b) => b.key > a.key ? 1 : -1);
+
+    console.log(`✅ Firebase /sensors: ${allRows.length} records. Latest:`, allRows[0]);
+
+    // Chart data (oldest → newest, last N)
+    const chartData = allRows.slice(0, MAX_CHART_POINTS).reverse();
+    chartData.forEach(r => {
+      chartLabels.push(r.ts.length > 12 ? r.ts.slice(-8) : r.ts);
+      chartSoil1.push(r.moisture1);
+      chartSoil2.push(r.moisture2);
+      chartSoil3.push(r.moisture3);
+      chartSoilAvg.push(r.soil_moisture);
+      chartAx.push(+r.accel_x.toFixed(2));
+      chartAy.push(+r.accel_y.toFixed(2));
+      chartAz.push(+r.accel_z.toFixed(2));
+    });
+
+    if (allRows.length > 0) {
+      const latest = allRows[0];
+      // Re-fetch original Firebase data for latest record
+      sensorsRef.child(latest.key).once('value', s => {
+        const rawData = s.val() || {};
+        updateDashboard(rawData);
+      });
+      lastDataTimestamp = Date.now();
+    }
+
+    document.getElementById('recordCountBadge').textContent = allRows.length + ' records';
+    if (document.getElementById('settTotalRecords')) {
+      document.getElementById('settTotalRecords').textContent = allRows.length;
+    }
+
+    filteredRows = [...allRows];
+    historyRows = [...allRows];
+    currentPage = 1;
+    renderTable();
+    renderHistoryTable();
+    updateCharts();
+
+    document.getElementById('espDot').style.background = '#22C55E';
+    document.getElementById('espDot').classList.add('pulse');
+    document.getElementById('espStatusText').textContent = 'Online';
+    document.getElementById('espStatusText').style.color = '#22C55E';
+    document.getElementById('dbDot').style.background = '#22C55E';
+    document.getElementById('dbStatusText').textContent = 'Connected';
+    document.getElementById('dbStatusText').style.color = '#22C55E';
+
+  }, err => {
+    console.error('Firebase error:', err);
+    document.getElementById('dbDot').style.background = '#EF4444';
+    document.getElementById('dbStatusText').textContent = 'Error';
+    document.getElementById('dbStatusText').style.color = '#EF4444';
+    showToast('⚠️ Firebase error: ' + err.message, 'warning');
+  });
+}
+
+// Last data timer
+setInterval(() => {
+  if (!lastDataTimestamp) return;
+  const elapsed = Math.floor((Date.now() - lastDataTimestamp) / 1000);
+  const ldEl = document.getElementById('lastDataTime');
+  const ldDot = document.getElementById('lastDataDot');
+  if (elapsed < 60) { ldEl.textContent = elapsed + 's ago'; ldDot.style.background = '#22C55E'; }
+  else if (elapsed < 3600) { ldEl.textContent = Math.floor(elapsed / 60) + 'm ago'; ldDot.style.background = elapsed > 120 ? '#F59E0B' : '#22C55E'; }
+  else { ldEl.textContent = Math.floor(elapsed / 3600) + 'h ago'; ldDot.style.background = '#EF4444'; }
+
+  const badge = document.getElementById('connBadge');
+  if (elapsed > 120) {
+    document.getElementById('espDot').classList.remove('pulse');
+    document.getElementById('espDot').style.background = '#EF4444';
+    document.getElementById('espStatusText').textContent = 'Offline';
+    document.getElementById('espStatusText').style.color = '#EF4444';
+    badge.className = 'connection-badge conn-offline';
+    badge.innerHTML = '<span class="status-dot" style="background:#EF4444;width:6px;height:6px"></span>Offline';
+  } else if (lastDataTimestamp) {
+    badge.className = 'connection-badge conn-online';
+    badge.innerHTML = '<span class="status-dot pulse" style="background:#22C55E;width:6px;height:6px"></span>Live';
+  }
+}, 1000);
+
+// ═══════════════ DASHBOARD TABLE ═══════════════
+function renderTable() {
+  const start = (currentPage - 1) * perPage;
+  const rows = filteredRows.slice(start, start + perPage);
+  if (!rows.length) {
+    document.getElementById('sensorTableBody').innerHTML = '<tr><td colspan="10" style="padding:40px;text-align:center;color:#CBD5E1;font-size:13px"><iconify-icon icon="material-symbols:database-off" style="font-size:32px;color:#E2E8F0;display:block;margin:0 auto 8px"></iconify-icon>No data</td></tr>';
+    document.getElementById('tableCount').textContent = '0 records';
+    document.getElementById('paginationInfo').textContent = 'Page 0 of 0';
+    document.getElementById('paginationBtns').innerHTML = '';
+    return;
+  }
+  document.getElementById('sensorTableBody').innerHTML = rows.map((r, i) => {
+    const cls = r.risk === 'Danger' ? 'tag-danger' : r.risk === 'Warning' ? 'tag-warning' : 'tag-safe';
+    const fixIcon = r.gps_fix ? '<span style="color:#22C55E">✓</span>' : '<span style="color:#CBD5E1">✗</span>';
+    return `<tr class="table-row" style="border-bottom:1px solid #F8FAFC;animation:fadeSlideIn 0.2s ease ${i * 0.02}s both">
+      <td style="padding:8px 10px;font-size:11px;color:#475569;white-space:nowrap">${r.ts}</td>
+      <td style="padding:8px 10px;font-size:12px;font-weight:600;color:#16A34A">${r.soil_moisture}%</td>
+      <td style="padding:8px 10px;font-size:11px;color:#64748B">${r.moisture1}/${r.moisture2}/${r.moisture3}</td>
+      <td style="padding:8px 10px;font-size:11px;color:#475569">${(+r.accel_x).toFixed(2)}</td>
+      <td style="padding:8px 10px;font-size:11px;color:#475569">${(+r.accel_y).toFixed(2)}</td>
+      <td style="padding:8px 10px;font-size:11px;color:#475569">${(+r.accel_z).toFixed(2)}</td>
+      <td style="padding:8px 10px;font-size:11px">${fixIcon}</td>
+      <td style="padding:8px 10px;font-size:10px;color:#64748B;font-family:monospace">${(+r.lat).toFixed(4)}, ${(+r.lon).toFixed(4)}</td>
+      <td style="padding:8px 10px;font-size:11px;color:#475569">${r.satellites}</td>
+      <td style="padding:8px 10px"><span class="tag ${cls}">${r.risk}</span></td>
+    </tr>`;
+  }).join('');
+
+  const total = Math.max(1, Math.ceil(filteredRows.length / perPage));
+  document.getElementById('tableCount').textContent = `Showing ${Math.min(perPage, filteredRows.length - start)} of ${filteredRows.length} records`;
+  document.getElementById('paginationInfo').textContent = `Page ${currentPage} of ${total}`;
+  buildPagination('paginationBtns', currentPage, total, p => { currentPage = p; renderTable(); });
+}
+
+// ═══════════════ HISTORY TABLE ═══════════════
+function renderHistoryTable() {
+  let rows = historyRows;
+  // Apply filter
+  if (historyFilter !== 'all') {
+    rows = historyRows.filter(r => r.risk.toLowerCase() === historyFilter);
+  }
+  // Apply search
+  const q = (document.getElementById('historySearch')?.value || '').toLowerCase();
+  if (q) {
+    rows = rows.filter(r =>
+      r.ts.toLowerCase().includes(q) || r.risk.toLowerCase().includes(q) ||
+      String(r.soil_moisture).includes(q)
+    );
+  }
+
+  const start = (historyPage - 1) * historyPerPage;
+  const pageRows = rows.slice(start, start + historyPerPage);
+
+  if (!pageRows.length) {
+    document.getElementById('historyTableBody').innerHTML = '<tr><td colspan="10" style="padding:40px;text-align:center;color:#CBD5E1;font-size:13px">No records match the filter</td></tr>';
+    document.getElementById('historyPaginationInfo').textContent = 'Page 0 of 0';
+    document.getElementById('historyPaginationBtns').innerHTML = '';
+    return;
+  }
+
+  document.getElementById('historyTableBody').innerHTML = pageRows.map((r, i) => {
+    const cls = r.risk === 'Danger' ? 'tag-danger' : r.risk === 'Warning' ? 'tag-warning' : 'tag-safe';
+    const fixIcon = r.gps_fix ? '<span style="color:#22C55E">✓</span>' : '<span style="color:#CBD5E1">✗</span>';
+    const rowNum = start + i + 1;
+    return `<tr class="table-row" style="border-bottom:1px solid #F8FAFC;animation:fadeSlideIn 0.2s ease ${i * 0.015}s both">
+      <td style="padding:10px;font-size:11px;color:#94A3B8;font-weight:600">${rowNum}</td>
+      <td style="padding:10px;font-size:11px;color:#475569;white-space:nowrap;font-weight:500">${r.ts}</td>
+      <td style="padding:10px;font-size:12px;font-weight:700;color:#16A34A">${r.soil_moisture}%</td>
+      <td style="padding:10px;font-size:11px;color:#64748B">${r.moisture1}% / ${r.moisture2}% / ${r.moisture3}%</td>
+      <td style="padding:10px;font-size:11px;color:#475569">${(+r.accel_x).toFixed(2)}</td>
+      <td style="padding:10px;font-size:11px;color:#475569">${(+r.accel_y).toFixed(2)}</td>
+      <td style="padding:10px;font-size:11px;color:#475569">${(+r.accel_z).toFixed(2)}</td>
+      <td style="padding:10px;font-size:10px;color:#64748B;font-family:monospace">${(+r.lat).toFixed(4)}, ${(+r.lon).toFixed(4)}</td>
+      <td style="padding:10px;font-size:10px;color:#94A3B8">${formatUptime(r.uptime_s)}</td>
+      <td style="padding:10px"><span class="tag ${cls}">${r.risk}</span></td>
+    </tr>`;
+  }).join('');
+
+  const total = Math.max(1, Math.ceil(rows.length / historyPerPage));
+  document.getElementById('historyPaginationInfo').textContent = `Page ${historyPage} of ${total} (${rows.length} records)`;
+  buildPagination('historyPaginationBtns', historyPage, total, p => { historyPage = p; renderHistoryTable(); });
+}
+
+function setHistoryFilter(f, el) {
+  historyFilter = f;
+  historyPage = 1;
+  document.querySelectorAll('.history-filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderHistoryTable();
+}
+
+function filterHistory() {
+  historyPage = 1;
+  renderHistoryTable();
+}
+
+// ═══════════════ PAGINATION BUILDER ═══════════════
+function buildPagination(containerId, current, total, onPageChange) {
+  const pb = document.getElementById(containerId);
+  pb.innerHTML = '';
+  const pages = [];
+  if (total <= 7) { for (let i = 1; i <= total; i++) pages.push(i); }
+  else {
+    pages.push(1);
+    if (current > 3) pages.push('...');
+    for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) pages.push(i);
+    if (current < total - 2) pages.push('...');
+    pages.push(total);
+  }
+
+  const prev = document.createElement('button');
+  prev.className = 'pagination-btn';
+  prev.innerHTML = '<iconify-icon icon="material-symbols:chevron-left-rounded" style="font-size:14px"></iconify-icon>';
+  prev.onclick = () => { if (current > 1) onPageChange(current - 1); };
+  if (current === 1) { prev.style.opacity = '0.4'; prev.style.cursor = 'default'; }
+  pb.appendChild(prev);
+
+  pages.forEach(p => {
+    const b = document.createElement('button');
+    b.className = 'pagination-btn' + (p === current ? ' active' : '');
+    b.textContent = p;
+    if (p !== '...') b.onclick = () => onPageChange(p);
+    else { b.style.cursor = 'default'; b.style.border = 'none'; b.style.background = 'transparent'; }
+    pb.appendChild(b);
+  });
+
+  const next = document.createElement('button');
+  next.className = 'pagination-btn';
+  next.innerHTML = '<iconify-icon icon="material-symbols:chevron-right-rounded" style="font-size:14px"></iconify-icon>';
+  next.onclick = () => { if (current < total) onPageChange(current + 1); };
+  if (current === total) { next.style.opacity = '0.4'; next.style.cursor = 'default'; }
+  pb.appendChild(next);
+}
+
+function filterTable() {
+  const q = document.getElementById('tableSearch').value.toLowerCase();
+  filteredRows = allRows.filter(r =>
+    r.ts.toLowerCase().includes(q) || r.risk.toLowerCase().includes(q) ||
+    String(r.soil_moisture).includes(q) || String(r.satellites).includes(q));
+  currentPage = 1;
+  renderTable();
+}
+
+// ═══════════════ PAGE NAVIGATION ═══════════════
+const pageTitles = {
+  dashboard: 'Landslide Monitoring Dashboard',
+  live: 'Live Sensor Monitoring',
+  history: 'Data History',
+  settings: 'System Settings'
+};
+
+function setPage(page, el) {
+  document.querySelectorAll('.sidebar-nav-item').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.page-section').forEach(s => s.classList.remove('active'));
+  const pageEl = document.getElementById('page-' + page);
+  if (pageEl) pageEl.classList.add('active');
+  document.getElementById('pageTitle').textContent = pageTitles[page] || 'Dashboard';
+
+  // Resize charts and maps when switching to pages with them
+  setTimeout(() => {
+    moistureChart?.resize();
+    accelChart?.resize();
+    liveMoistureChart?.resize();
+    map?.invalidateSize();
+    liveMap?.invalidateSize();
+  }, 50);
+}
+
+// ═══════════════ SETTINGS ═══════════════
+function saveThresholds() {
+  const soilWarnIn = parseFloat(document.getElementById('settSoilWarn').value);
+  const soilCritIn = parseFloat(document.getElementById('settSoilCrit').value);
+  const tiltWarnIn = parseFloat(document.getElementById('settTiltWarn').value);
+  const tiltCritIn = parseFloat(document.getElementById('settTiltCrit').value);
+
+  // Validate
+  if (isNaN(soilWarnIn) || isNaN(soilCritIn) || isNaN(tiltWarnIn) || isNaN(tiltCritIn)) {
+    showToast('⚠️ Please enter valid numbers for all thresholds', 'warning'); return;
+  }
+  if (soilWarnIn >= soilCritIn) {
+    showToast('⚠️ Soil Warning must be less than Critical', 'warning'); return;
+  }
+  if (tiltWarnIn >= tiltCritIn) {
+    showToast('⚠️ Tilt Warning must be less than Critical', 'warning'); return;
+  }
+
+  SOIL_WARN = soilWarnIn;
+  SOIL_CRIT = soilCritIn;
+  TILT_WARN = tiltWarnIn;
+  TILT_CRIT = tiltCritIn;
+
+  // Update current-value displays in settings
+  const soilWarnDisp = document.getElementById('curSoilWarnDisplay');
+  const soilCritDisp = document.getElementById('curSoilCritDisplay');
+  const tiltWarnDisp = document.getElementById('curTiltWarnDisplay');
+  const tiltCritDisp = document.getElementById('curTiltCritDisplay');
+  if (soilWarnDisp) soilWarnDisp.textContent = SOIL_WARN + '%';
+  if (soilCritDisp) soilCritDisp.textContent = SOIL_CRIT + '%';
+  if (tiltWarnDisp) tiltWarnDisp.textContent = TILT_WARN;
+  if (tiltCritDisp) tiltCritDisp.textContent = TILT_CRIT;
+
+  // Update chart mark lines with new thresholds
+  if (moistureChart) {
+    moistureChart.setOption({
+      series: [{ name: 'Average', markLine: { data: [{ yAxis: SOIL_WARN, name: 'Warning' }, { yAxis: SOIL_CRIT, name: 'Critical' }],
+        lineStyle: { color: '#EF4444', type: 'solid', width: 1.5, opacity: 0.5 },
+        label: { formatter: p => (p.name === 'Warning' ? `Warn ${SOIL_WARN}%` : `Crit ${SOIL_CRIT}%`), color: '#EF4444', fontSize: 9 }
+      }}]
+    });
+  }
+  if (liveMoistureChart) {
+    liveMoistureChart.setOption({
+      series: [{ name: 'Average', markLine: { data: [{ yAxis: SOIL_WARN, name: 'Warning' }, { yAxis: SOIL_CRIT, name: 'Critical' }],
+        lineStyle: { color: '#EF4444', type: 'solid', width: 2, opacity: 0.5 },
+        label: { formatter: p => (p.name === 'Warning' ? `Warn ${SOIL_WARN}%` : `Crit ${SOIL_CRIT}%`), color: '#EF4444', fontSize: 10 }
+      }}]
+    });
+  }
+
+  // Re-evaluate all rows with new thresholds so risk column updates
+  if (allRows.length > 0) {
+    allRows.forEach(r => {
+      const tiltDev = Math.abs(Math.sqrt(r.accel_x**2 + r.accel_y**2 + r.accel_z**2) - 9.81);
+      r.risk = (r.soil_moisture > SOIL_CRIT || tiltDev > TILT_CRIT) ? 'Danger'
+             : (r.soil_moisture > SOIL_WARN || tiltDev > TILT_WARN) ? 'Warning' : 'Safe';
+    });
+    filteredRows = [...allRows];
+    historyRows = [...allRows];
+    renderTable();
+    renderHistoryTable();
+    // Re-update the dashboard risk badge with latest record
+    if (allRows[0]) {
+      const r = allRows[0];
+      const tiltDev = Math.abs(Math.sqrt(r.accel_x**2 + r.accel_y**2 + r.accel_z**2) - 9.81);
+      const tilt = tiltDev > TILT_CRIT ? 'Critical' : tiltDev > TILT_WARN ? 'Warning' : 'Stable';
+      const tEl = document.getElementById('tiltStatus');
+      if (tEl) { tEl.textContent = tilt; tEl.className = 'tag ' + (tilt === 'Critical' ? 'tag-danger' : tilt === 'Warning' ? 'tag-warning' : 'tag-safe'); }
+      const risk = (r.soil_moisture > SOIL_CRIT || tiltDev > TILT_CRIT) ? 'DANGER' : (r.soil_moisture > SOIL_WARN || tiltDev > TILT_WARN) ? 'WARNING' : 'SAFE';
+      const rb = document.getElementById('riskBadge');
+      if (rb) {
+        rb.textContent = risk;
+        rb.style.background = risk === 'DANGER' ? '#FEE2E2' : risk === 'WARNING' ? '#FEF3C7' : '#DCFCE7';
+        rb.style.color = risk === 'DANGER' ? '#DC2626' : risk === 'WARNING' ? '#D97706' : '#16A34A';
+      }
+    }
+  }
+
+  showToast('✅ Thresholds saved & charts updated!');
+}
+
+// Apply manual GPS point for weather fetch
+function applyManualGpsPoint() {
+  const lat = parseFloat(document.getElementById('settDefLat').value);
+  const lon = parseFloat(document.getElementById('settDefLon').value);
+  if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    showToast('⚠️ Invalid coordinates. Lat: -90 to 90, Lon: -180 to 180', 'warning'); return;
+  }
+  // Update the map to show manual point if no GPS fix
+  if (!gpsHasFix) {
+    initMap(lat, lon);
+    initLiveMap(lat, lon);
+    document.getElementById('mapSubtitle').textContent = `Manual: ${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+  }
+  // Refresh weather with the new manual point (only if no live GPS fix)
+  if (!gpsHasFix) {
+    weatherFetched = false;
+    startWeather(lat, lon);
+    showToast(`📍 Manual GPS point set: ${lat.toFixed(4)}, ${lon.toFixed(4)} — Refreshing weather...`);
+  } else {
+    showToast(`📍 Manual GPS point saved. Live GPS fix is active — weather uses GPS coordinates.`, 'info');
+  }
+}
+
+// ═══════════════ MODAL ═══════════════
+function showResetModal() {
+  const m = document.getElementById('resetModal');
+  m.style.display = 'flex';
+  requestAnimationFrame(() => { requestAnimationFrame(() => m.classList.add('visible')); });
+}
+function closeModal() {
+  const m = document.getElementById('resetModal');
+  m.classList.remove('visible');
+  setTimeout(() => m.style.display = 'none', 250);
+}
+function confirmReset() {
+  closeModal();
+  sensorsRef.remove()
+    .then(() => showToast('🗑️ All records deleted from Firebase', 'warning'))
+    .catch(err => showToast('⚠️ Error: ' + err.message, 'warning'));
+}
+document.getElementById('resetModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+
+// ═══════════════ EXCEL DOWNLOAD ═══════════════
+function downloadExcel() {
+  if (!allRows.length) { showToast('⚠️ No data to export', 'warning'); return; }
+  const exportData = allRows.map(r => {
+    const row = {
+      'Timestamp': r.ts,
+      'Uptime': formatUptime(r.uptime_s),
+      'Soil Moisture Avg (%)': r.soil_moisture,
+      'Moisture 1 (%)': r.moisture1,
+      'Moisture 2 (%)': r.moisture2,
+      'Moisture 3 (%)': r.moisture3,
+      'Accel X (m/s²)': r.accel_x,
+      'Accel Y (m/s²)': r.accel_y,
+      'Accel Z (m/s²)': r.accel_z,
+      'GPS Fix': r.gps_fix ? 'Yes' : 'No',
+      'Latitude': r.lat,
+      'Longitude': r.lon,
+      'Weight (g)': r.weight,
+      'Satellites': r.satellites,
+      'Risk Level': r.risk
+    };
+    if (lastWeatherData) {
+      row['Temperature (°C)'] = lastWeatherData.temperature;
+      row['Humidity (%)'] = lastWeatherData.humidity;
+      row['Rainfall (mm)'] = lastWeatherData.rain;
+      row['Wind Speed (km/h)'] = lastWeatherData.wind_speed;
+      row['Wind Direction (°)'] = lastWeatherData.wind_direction;
+    }
+    return row;
+  });
+
+  try {
+    if (typeof XLSX !== 'undefined') {
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const colWidths = Object.keys(exportData[0]).map(k => ({ wch: Math.max(k.length + 2, 14) }));
+      ws['!cols'] = colWidths;
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Sensor Data');
+      XLSX.writeFile(wb, 'landslide_monitoring_data.xlsx');
+      showToast('✅ Excel downloaded (' + allRows.length + ' records)');
+      return;
+    }
+  } catch (err) { console.error('XLSX error:', err); }
+
+  // CSV fallback
+  try {
+    const headers = Object.keys(exportData[0]);
+    const csvRows = [headers.join(',')];
+    exportData.forEach(row => {
+      csvRows.push(headers.map(h => {
+        const val = row[h] === undefined ? '' : row[h];
+        return typeof val === 'string' && val.includes(',') ? '"' + val + '"' : val;
+      }).join(','));
+    });
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'landslide_data.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    showToast('✅ CSV downloaded (' + allRows.length + ' records)');
+  } catch (csvErr) {
+    showToast('⚠️ Export failed: ' + csvErr.message, 'warning');
+  }
+}
+
+// ═══════════════ TOAST ═══════════════
+let toastTimer;
+function showToast(msg, type) {
+  const t = document.getElementById('toast'), icon = document.getElementById('toastIcon');
+  document.getElementById('toastMsg').textContent = msg;
+  if (type === 'warning') { icon.setAttribute('icon', 'material-symbols:warning-outline-rounded'); icon.style.color = '#F59E0B'; }
+  else if (type === 'info') { icon.setAttribute('icon', 'material-symbols:info-outline-rounded'); icon.style.color = '#3B82F6'; }
+  else { icon.setAttribute('icon', 'material-symbols:check-circle-outline-rounded'); icon.style.color = '#22C55E'; }
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ═══════════════ INIT ═══════════════
+initCharts();
+// Initialize map immediately with default location
+initMap(DEFAULT_LAT, DEFAULT_LON);
+initLiveMap(DEFAULT_LAT, DEFAULT_LON);
+initFirebase();
+</script>
+</body>
+</html>
